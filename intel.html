@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MedQuiz — Clinical Assessment</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Serif+Display&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --navy:#0A1628;--navy-mid:#0F1E35;--navy-light:#152238;
+  --teal:#00C9B1;--teal-dim:#009E8E;
+  --amber:#F5A623;--red:#E84040;--green:#2ECC8A;--purple:#9B7FE8;
+  --white:#F0F4FF;--slate:#8BA3C7;--slate-dim:#4A6380;
+  --border:rgba(139,163,199,0.15);--border2:rgba(139,163,199,0.28);
+}
+*{scrollbar-width:thin;scrollbar-color:var(--border2) transparent}
+body{font-family:'DM Sans',sans-serif;background:var(--navy);color:var(--white);min-height:100vh;display:flex;flex-direction:column;align-items:center}
+
+/* HEADER */
+header{width:100%;background:var(--navy-mid);border-bottom:1px solid var(--border2);padding:13px 28px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50}
+.logo{display:flex;align-items:center;gap:10px}
+.logo-ring{width:32px;height:32px;border:2px solid var(--teal);border-radius:50%;display:flex;align-items:center;justify-content:center;animation:pring 2.2s ease-in-out infinite}
+@keyframes pring{0%,100%{box-shadow:0 0 0 0 rgba(0,201,177,.35)}55%{box-shadow:0 0 0 7px rgba(0,201,177,0)}}
+.logo-dot{width:9px;height:9px;background:var(--teal);border-radius:50%}
+.logo-text{font-weight:600;font-size:17px;letter-spacing:-.2px}
+.logo-text span{color:var(--teal)}
+.header-right{display:flex;align-items:center;gap:10px}
+.ai-pill{background:rgba(155,127,232,.12);border:1px solid rgba(155,127,232,.3);color:var(--purple);font-size:11px;font-weight:600;padding:4px 10px;border-radius:20px;letter-spacing:.04em}
+
+/* SCREENS */
+.screen{display:none;width:100%;max-width:680px;padding:36px 18px 60px;margin:0 auto}
+.screen.active{display:block}
+
+/* ADMIN PANEL */
+.admin-panel{display:none;width:100%;max-width:680px;padding:28px 18px;margin:0 auto}
+.admin-panel.active{display:block}
+.panel-card{background:var(--navy-mid);border:1px solid var(--border2);border-radius:14px;padding:26px;margin-bottom:16px}
+.panel-title{font-size:13px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--teal);margin-bottom:18px;display:flex;align-items:center;gap:8px}
+.upload-zone{border:2px dashed var(--border2);border-radius:10px;padding:28px 20px;text-align:center;cursor:pointer;transition:border-color .2s;position:relative}
+.upload-zone:hover,.upload-zone.drag{border-color:var(--teal)}
+.upload-zone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.upload-icon{font-size:28px;margin-bottom:8px;opacity:.5}
+.upload-label{font-size:13px;color:var(--slate);line-height:1.6}
+.upload-label strong{color:var(--white)}
+.format-note{font-size:11px;color:var(--slate-dim);margin-top:6px;line-height:1.6}
+.parse-status{margin-top:14px;font-size:13px;padding:11px 15px;border-radius:8px;display:none}
+.parse-ok{background:rgba(46,204,138,.1);border:1px solid rgba(46,204,138,.3);color:var(--green)}
+.parse-err{background:rgba(232,64,64,.1);border:1px solid rgba(232,64,64,.25);color:var(--red)}
+.topic-chips{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px}
+.chip{font-size:11px;padding:4px 11px;border-radius:20px;background:rgba(0,201,177,.1);border:1px solid rgba(0,201,177,.22);color:var(--teal)}
+.btn-use-bank{width:100%;background:var(--teal);color:var(--navy);border:none;border-radius:9px;font-family:'DM Sans',sans-serif;font-weight:600;font-size:14px;padding:11px;cursor:pointer;margin-top:14px;transition:background .2s;display:none}
+.btn-use-bank:hover{background:var(--teal-dim)}
+
+/* API KEY section */
+.api-row{display:flex;gap:10px;align-items:flex-end}
+.api-row .form-row{flex:1;margin-bottom:0}
+.btn-save-key{background:rgba(155,127,232,.15);border:1px solid rgba(155,127,232,.35);color:var(--purple);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;padding:11px 18px;border-radius:8px;cursor:pointer;white-space:nowrap;transition:background .2s}
+.btn-save-key:hover{background:rgba(155,127,232,.25)}
+.key-status{font-size:12px;margin-top:8px;padding:8px 12px;border-radius:7px;display:none}
+.key-ok{background:rgba(155,127,232,.1);border:1px solid rgba(155,127,232,.25);color:var(--purple)}
+.key-note{background:rgba(139,163,199,.07);border:1px solid var(--border2);color:var(--slate);font-size:11px;margin-top:8px;padding:8px 12px;border-radius:7px;line-height:1.55}
+
+/* REGISTRATION */
+.reg-hero{text-align:center;margin-bottom:30px}
+.reg-hero h1{font-family:'DM Serif Display',serif;font-size:34px;line-height:1.15;margin-bottom:10px}
+.reg-hero h1 em{color:var(--teal);font-style:normal}
+.reg-hero p{color:var(--slate);font-size:13px;line-height:1.65}
+.bank-info{display:inline-flex;align-items:center;gap:7px;border-radius:8px;padding:7px 13px;font-size:12px;margin-top:9px}
+.bi-ok{background:rgba(0,201,177,.08);border:1px solid rgba(0,201,177,.2);color:var(--teal)}
+.bi-warn{background:rgba(245,166,35,.08);border:1px solid rgba(245,166,35,.2);color:var(--amber)}
+.bi-ai{background:rgba(155,127,232,.1);border:1px solid rgba(155,127,232,.25);color:var(--purple)}
+.form-card{background:var(--navy-mid);border:1px solid var(--border);border-radius:14px;padding:26px}
+.form-row{margin-bottom:17px}
+.form-row label{display:block;font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--slate);margin-bottom:6px}
+.form-row input,.form-row select{width:100%;background:rgba(255,255,255,.05);border:1px solid var(--border2);border-radius:8px;color:var(--white);font-family:'DM Sans',sans-serif;font-size:14px;padding:11px 14px;outline:none;transition:border-color .2s}
+.form-row input::placeholder{color:var(--slate-dim)}
+.form-row input:focus,.form-row select:focus{border-color:var(--teal)}
+.form-row select option{background:#0F1E35;color:var(--white)}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.btn-primary{width:100%;background:var(--teal);color:var(--navy);border:none;border-radius:9px;font-family:'DM Sans',sans-serif;font-weight:600;font-size:15px;padding:13px;cursor:pointer;transition:background .2s,transform .1s;margin-top:6px}
+.btn-primary:hover{background:var(--teal-dim)}
+.btn-primary:active{transform:scale(.99)}
+#reg-error{color:var(--red);font-size:13px;margin-bottom:8px;display:none;padding:8px 12px;background:rgba(232,64,64,.08);border-radius:7px}
+
+/* QUIZ */
+.quiz-top{display:flex;align-items:center;gap:14px;margin-bottom:20px}
+.progress-track{flex:1;height:3px;background:var(--border);border-radius:3px;overflow:hidden}
+.progress-fill{height:100%;background:var(--teal);border-radius:3px;transition:width .4s ease}
+.q-counter{font-size:12px;color:var(--slate);white-space:nowrap}
+.timer-wrap{display:flex;justify-content:center;margin-bottom:20px}
+.timer-ring-container{position:relative;width:76px;height:76px}
+.timer-ring-container svg{transform:rotate(-90deg)}
+.t-bg{stroke:var(--border2);fill:none;stroke-width:4}
+.t-fg{fill:none;stroke-width:4;stroke-linecap:round;transition:stroke-dashoffset 1s linear,stroke .5s}
+.timer-num{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:20px;font-weight:600;letter-spacing:-1px}
+.timeout-msg{text-align:center;color:var(--amber);font-size:13px;font-weight:500;min-height:18px;margin-bottom:10px}
+.question-card{background:var(--navy-mid);border:1px solid var(--border);border-radius:14px;padding:24px 22px 20px}
+.q-cat{font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--teal);margin-bottom:11px;display:flex;align-items:center;gap:6px}
+.ai-tag{background:rgba(155,127,232,.12);border:1px solid rgba(155,127,232,.25);color:var(--purple);font-size:10px;padding:2px 7px;border-radius:10px;letter-spacing:.04em}
+.q-text{font-family:'DM Serif Display',serif;font-size:19px;line-height:1.45;margin-bottom:20px}
+.options-list{display:flex;flex-direction:column;gap:8px}
+.opt-btn{background:rgba(255,255,255,.04);border:1px solid var(--border2);border-radius:9px;color:var(--white);font-family:'DM Sans',sans-serif;font-size:14px;padding:12px 15px;text-align:left;cursor:pointer;transition:background .15s,border-color .15s;display:flex;align-items:flex-start;gap:10px;line-height:1.4}
+.opt-btn:hover:not(:disabled){background:rgba(0,201,177,.08);border-color:rgba(0,201,177,.35)}
+.opt-btn:disabled{cursor:default}
+.opt-letter{width:22px;min-width:22px;height:22px;border-radius:50%;background:rgba(139,163,199,.15);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--slate);flex-shrink:0}
+.opt-btn.correct{background:rgba(46,204,138,.1);border-color:var(--green)}
+.opt-btn.correct .opt-letter{background:var(--green);color:var(--navy)}
+.opt-btn.wrong{background:rgba(232,64,64,.09);border-color:var(--red)}
+.opt-btn.wrong .opt-letter{background:var(--red);color:#fff}
+.opt-btn.dimmed{opacity:.38}
+
+/* AI GENERATING STATE */
+.generating-card{background:var(--navy-mid);border:1px solid rgba(155,127,232,.3);border-radius:14px;padding:40px 24px;text-align:center}
+.gen-spinner{width:44px;height:44px;border:3px solid rgba(155,127,232,.2);border-top-color:var(--purple);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 16px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.gen-text{color:var(--purple);font-size:14px;font-weight:500}
+.gen-sub{color:var(--slate);font-size:12px;margin-top:6px}
+
+/* OVERLAY */
+.overlay{display:none;position:fixed;inset:0;background:rgba(4,10,22,.88);z-index:200;align-items:center;justify-content:center;padding:18px;backdrop-filter:blur(5px)}
+.overlay.show{display:flex}
+.ov-card{background:var(--navy-light);border:1px solid var(--border2);border-radius:18px;padding:26px;max-width:560px;width:100%;max-height:88vh;overflow-y:auto;animation:slideUp .22s ease}
+@keyframes slideUp{from{transform:translateY(18px);opacity:0}to{transform:translateY(0);opacity:1}}
+.ov-badge{display:inline-flex;align-items:center;gap:7px;padding:5px 14px;border-radius:20px;font-size:13px;font-weight:600;margin-bottom:14px}
+.badge-ok{background:rgba(46,204,138,.13);color:var(--green)}
+.badge-ng{background:rgba(232,64,64,.11);color:var(--red)}
+.badge-to{background:rgba(245,166,35,.11);color:var(--amber)}
+.ov-ans{font-size:14px;margin-bottom:11px;color:var(--slate);line-height:1.55}
+.ov-ans strong{color:var(--white)}
+.ov-exp{font-size:13px;color:var(--slate);line-height:1.75;background:rgba(255,255,255,.04);border-left:3px solid var(--teal);padding:13px 15px;border-radius:0 8px 8px 0;margin-bottom:20px;white-space:pre-wrap;word-wrap:break-word}
+.btn-next{width:100%;background:var(--teal);color:var(--navy);border:none;border-radius:9px;font-family:'DM Sans',sans-serif;font-weight:600;font-size:15px;padding:12px;cursor:pointer;transition:background .2s}
+.btn-next:hover{background:var(--teal-dim)}
+
+/* RESULTS */
+.res-hero{text-align:center;padding:20px 0 26px}
+.score-ring{width:130px;height:130px;position:relative;margin:0 auto 18px}
+.score-ring svg{transform:rotate(-90deg)}
+.score-ring-text{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center}
+.score-pct{font-size:30px;font-weight:600}
+.score-lbl{font-size:10px;color:var(--slate);letter-spacing:.08em;text-transform:uppercase}
+.grade-badge{display:inline-block;font-family:'DM Serif Display',serif;font-size:26px;padding:5px 22px;border-radius:28px;margin-bottom:7px}
+.gA{background:rgba(46,204,138,.13);color:var(--green)}
+.gB{background:rgba(0,201,177,.13);color:var(--teal)}
+.gC{background:rgba(245,166,35,.13);color:var(--amber)}
+.gD,.gF{background:rgba(232,64,64,.11);color:var(--red)}
+.res-name{font-size:15px;color:var(--slate)}.res-name strong{color:var(--white)}
+.stats-row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:22px}
+.stat-box{background:var(--navy-mid);border:1px solid var(--border);border-radius:11px;padding:13px;text-align:center}
+.stat-num{font-size:24px;font-weight:600;margin-bottom:3px}
+.stat-lbl{font-size:10px;color:var(--slate);letter-spacing:.06em;text-transform:uppercase}
+.sg{color:var(--green)}.sr{color:var(--red)}.sa{color:var(--amber)}
+.review-hdr{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--slate);margin-bottom:11px}
+.rev-item{background:var(--navy-mid);border:1px solid var(--border);border-radius:11px;padding:13px 15px;margin-bottom:8px}
+.rev-top{display:flex;align-items:flex-start;gap:10px;margin-bottom:6px}
+.rev-icon{width:20px;min-width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;margin-top:2px}
+.ic-ok{background:var(--green);color:var(--navy)}.ic-ng{background:var(--red);color:#fff}.ic-to{background:var(--amber);color:var(--navy)}
+.rev-q{font-size:12px;color:var(--white);line-height:1.45;flex:1}
+.rev-ans{font-size:11px;color:var(--slate);line-height:1.5}
+.rc{color:var(--green)}.rw{color:var(--red)}
+.ai-note{font-size:11px;color:var(--purple);margin-top:3px;opacity:.8}
+.btn-restart{width:100%;background:transparent;border:1px solid var(--teal);color:var(--teal);border-radius:9px;font-family:'DM Sans',sans-serif;font-weight:600;font-size:14px;padding:12px;cursor:pointer;transition:background .2s;margin-top:4px}
+.btn-restart:hover{background:rgba(0,201,177,.08)}
+
+@media(max-width:520px){.form-grid{grid-template-columns:1fr}.stats-row{grid-template-columns:1fr 1fr}.q-text{font-size:16px}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-ring"><div class="logo-dot"></div></div>
+    <div class="logo-text">Med<span>Quiz</span></div>
+  </div>
+  <div class="header-right">
+    <span class="ai-pill">✦ AI-Powered</span>
+  </div>
+</header>
+
+<!-- ADMIN PANEL (hidden, revealed by secret name) -->
+<div class="admin-panel" id="admin-panel">
+
+  <!-- Upload Section -->
+  <div class="panel-card">
+    <div class="panel-title">📂 Question Bank Upload</div>
+    <div class="upload-zone" id="upload-zone">
+      <input type="file" id="file-input" accept=".docx" onchange="handleFile(this.files[0])">
+      <div class="upload-icon">📄</div>
+      <div class="upload-label"><strong>Drop your .docx file here</strong><br>or click to browse</div>
+      <div class="format-note">
+        Format: <code style="color:var(--teal)">### Question N: TopicName</code> or <code style="color:var(--teal)">**Question N: TopicName**</code><br>
+        followed by question text · options A–E · <code style="color:var(--teal)">Correct Answer: X</code> · Explanation
+      </div>
+    </div>
+    <div class="parse-status" id="parse-status"></div>
+    <div class="topic-chips" id="topic-chips"></div>
+    <button class="btn-use-bank" id="btn-use-bank" onclick="activateBank()">✓ Use This Question Bank</button>
+  </div>
+
+  <!-- API Key Section -->
+  <div class="panel-card">
+    <div class="panel-title">✦ AI Question Generation — API Key</div>
+    <p style="font-size:13px;color:var(--slate);line-height:1.65;margin-bottom:14px">
+      When the bank runs low (or is empty), the AI automatically generates fresh questions for any topic. Paste your Anthropic API key below — it stays in your browser only.
+    </p>
+    <div class="api-row">
+      <div class="form-row">
+        <label>Anthropic API Key</label>
+        <input type="password" id="api-key-input" placeholder="sk-ant-api03-…">
+      </div>
+      <button class="btn-save-key" onclick="saveApiKey()">Save Key</button>
+    </div>
+    <div class="key-status" id="key-status"></div>
+    <div class="key-note">
+      🔒 Your key is stored in <strong>sessionStorage</strong> — it is never sent anywhere except directly to api.anthropic.com when generating questions, and is cleared when you close the tab.<br><br>
+      Get a key at <a href="https://console.anthropic.com" target="_blank" style="color:var(--teal)">console.anthropic.com</a> → API Keys.
+    </div>
+  </div>
+
+  <button class="btn-primary" onclick="exitAdmin()" style="max-width:680px;display:block;margin:0 18px 40px">
+    ← Back to Quiz
+  </button>
+</div>
+
+<!-- REGISTRATION -->
+<div class="screen active" id="screen-reg">
+  <div class="reg-hero">
+    <h1>Clinical Knowledge<br><em>Assessment</em></h1>
+    <p>Timed MCQ practice for medical students.<br>One minute per question. No second chances.</p>
+    <div class="bank-info bi-warn" id="bank-info-badge">⚠ No question bank loaded — AI will generate questions</div>
+  </div>
+  <div class="form-card">
+    <div class="form-grid">
+      <div class="form-row">
+        <label>First Name</label>
+        <input type="text" id="reg-fname" placeholder="e.g. Amara" oninput="checkAdminTrigger()">
+      </div>
+      <div class="form-row">
+        <label>Last Name</label>
+        <input type="text" id="reg-lname" placeholder="e.g. Okafor" oninput="checkAdminTrigger()">
+      </div>
+    </div>
+    <div class="form-row">
+      <label>Student Level</label>
+      <select id="reg-level">
+        <option value="">Select level</option>
+        <option value="Pre-clinical">Pre-clinical (Year 1–2)</option>
+        <option value="Clinical">Clinical (Year 3–6)</option>
+      </select>
+    </div>
+    <div class="form-grid">
+      <div class="form-row">
+        <label>Topic</label>
+        <select id="reg-topic"><option value="all">All Topics (Mixed)</option></select>
+      </div>
+      <div class="form-row">
+        <label>No. of Questions</label>
+        <select id="reg-count">
+          <option value="5">5 questions</option>
+          <option value="10" selected>10 questions</option>
+          <option value="15">15 questions</option>
+          <option value="20">20 questions</option>
+          <option value="30">30 questions</option>
+          <option value="all">All available</option>
+        </select>
+      </div>
+    </div>
+    <div id="reg-error"></div>
+    <button class="btn-primary" id="btn-start" onclick="startQuiz()">Begin Assessment →</button>
+  </div>
+</div>
+
+<!-- QUIZ -->
+<div class="screen" id="screen-quiz">
+  <div class="quiz-top">
+    <div class="q-counter" id="q-counter">Q 1 of 10</div>
+    <div class="progress-track"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+  </div>
+  <div class="timer-wrap">
+    <div class="timer-ring-container">
+      <svg viewBox="0 0 76 76" width="76" height="76">
+        <circle class="t-bg" cx="38" cy="38" r="34"/>
+        <circle class="t-fg" id="t-arc" cx="38" cy="38" r="34" stroke="#00C9B1"
+          stroke-dasharray="213.6" stroke-dashoffset="0"/>
+      </svg>
+      <div class="timer-num" id="timer-num">60</div>
+    </div>
+  </div>
+  <div class="timeout-msg" id="timeout-msg"></div>
+  <div id="question-area">
+    <div class="question-card" id="question-card">
+      <div class="q-cat" id="q-cat"></div>
+      <div class="q-text" id="q-text"></div>
+      <div class="options-list" id="options-list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- RESULTS -->
+<div class="screen" id="screen-results">
+  <div class="res-hero">
+    <div class="score-ring">
+      <svg viewBox="0 0 130 130" width="130" height="130">
+        <circle cx="65" cy="65" r="58" fill="none" stroke="rgba(139,163,199,.13)" stroke-width="6"/>
+        <circle id="res-arc" cx="65" cy="65" r="58" fill="none" stroke="#00C9B1"
+          stroke-width="6" stroke-linecap="round"
+          stroke-dasharray="364.4" stroke-dashoffset="364.4"
+          style="transition:stroke-dashoffset 1.2s ease,stroke .8s ease"/>
+      </svg>
+      <div class="score-ring-text">
+        <div class="score-pct" id="res-pct">0%</div>
+        <div class="score-lbl">Score</div>
+      </div>
+    </div>
+    <div id="res-grade" class="grade-badge gA">A</div>
+    <div class="res-name">Well done, <strong id="res-name"></strong></div>
+    <div style="font-size:12px;color:var(--slate);margin-top:3px" id="res-level"></div>
+  </div>
+  <div class="stats-row">
+    <div class="stat-box"><div class="stat-num sg" id="res-correct">0</div><div class="stat-lbl">Correct</div></div>
+    <div class="stat-box"><div class="stat-num sr" id="res-wrong">0</div><div class="stat-lbl">Wrong</div></div>
+    <div class="stat-box"><div class="stat-num sa" id="res-timed">0</div><div class="stat-lbl">Timed Out</div></div>
+  </div>
+  <div class="review-hdr">Question Review</div>
+  <div id="review-list"></div>
+  <button class="btn-restart" onclick="restartQuiz()">← New Session</button>
+</div>
+
+<!-- EXPLANATION OVERLAY -->
+<div class="overlay" id="overlay">
+  <div class="ov-card">
+    <div class="ov-badge" id="ov-badge"></div>
+    <div class="ov-ans" id="ov-ans"></div>
+    <div class="ov-exp" id="ov-exp"></div>
+    <button class="btn-next" id="btn-next">Next Question →</button>
+  </div>
+</div>
+
+<script>
+// ── STATE ─────────────────────────────────────────────────
+let BANK = [];
+let SESSION = [];
+let participant = {};
+let curIdx = 0, score = 0, answered = false;
+let timeLeft = 60, timerInterval = null;
+let results = [];
+const CIRC = 213.6;
+const ADMIN_FIRST = 'admin';
+const ADMIN_LAST  = 'admin';
+
+// AI generation queue: topics needing AI questions this session
+let aiTopicsNeeded = [];
+let aiGeneratedPool = []; // AI questions ready to use
+
+// ── ADMIN TRIGGER ─────────────────────────────────────────
+function checkAdminTrigger() {
+  const f = document.getElementById('reg-fname').value.trim().toLowerCase();
+  const l = document.getElementById('reg-lname').value.trim().toLowerCase();
+  if (f === ADMIN_FIRST && l === ADMIN_LAST) {
+    openAdmin();
+  }
+}
+
+function openAdmin() {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('admin-panel').classList.add('active');
+  // Pre-fill saved key if present
+  const saved = sessionStorage.getItem('mq_api_key');
+  if (saved) {
+    document.getElementById('api-key-input').value = saved;
+    showKeyStatus('✓ API key loaded from this session', true);
+  }
+  window.scrollTo(0,0);
+}
+
+function exitAdmin() {
+  document.getElementById('admin-panel').classList.remove('active');
+  document.getElementById('reg-fname').value = '';
+  document.getElementById('reg-lname').value = '';
+  showScreen('screen-reg');
+}
+
+// ── API KEY ───────────────────────────────────────────────
+function saveApiKey() {
+  const key = document.getElementById('api-key-input').value.trim();
+  if (!key.startsWith('sk-ant')) {
+    showKeyStatus('That does not look like a valid Anthropic API key (should start with sk-ant).', false);
+    return;
+  }
+  sessionStorage.setItem('mq_api_key', key);
+  showKeyStatus('✓ API key saved for this session.', true);
+}
+
+function showKeyStatus(msg, ok) {
+  const el = document.getElementById('key-status');
+  el.style.display = 'block';
+  el.className = 'key-status ' + (ok ? 'key-ok' : 'parse-err');
+  el.textContent = msg;
+}
+
+function getApiKey() {
+  return sessionStorage.getItem('mq_api_key') || '';
+}
+
+// ── DRAG & DROP ───────────────────────────────────────────
+const uz = document.getElementById('upload-zone');
+uz.addEventListener('dragover', e => { e.preventDefault(); uz.classList.add('drag'); });
+uz.addEventListener('dragleave', () => uz.classList.remove('drag'));
+uz.addEventListener('drop', e => {
+  e.preventDefault(); uz.classList.remove('drag');
+  const f = e.dataTransfer.files[0];
+  if (f) handleFile(f);
+});
+
+// ── FILE PARSING ──────────────────────────────────────────
+function handleFile(file) {
+  if (!file || !file.name.endsWith('.docx')) {
+    showParseStatus('Please upload a .docx (Word) file.', false); return;
+  }
+  showParseStatus('Reading file…', null);
+  const reader = new FileReader();
+  reader.onload = e => {
+    mammoth.extractRawText({ arrayBuffer: e.target.result })
+      .then(r => parseQuestions(r.value))
+      .catch(err => showParseStatus('Could not read file: ' + err.message, false));
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function parseQuestions(text) {
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  const questions = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+    const headerMatch = line.replace(/[*#]/g,'').trim().match(/^Question\s+\d+\s*:\s*(.+)$/i);
+    if (!headerMatch) { i++; continue; }
+
+    const category = headerMatch[1].trim();
+    i++;
+
+    let qText = '';
+    while (i < lines.length) {
+      const clean = lines[i].replace(/\*\*/g,'').trim();
+      if (/^[A-E][\.\)]\s/.test(clean)) break;
+      if (/^Correct Answer/i.test(clean)) break;
+      if (/^Question\s+\d+\s*:/i.test(clean.replace(/[*#]/g,''))) break;
+      if (clean) qText += (qText ? ' ' : '') + clean;
+      i++;
+    }
+
+    const options = [];
+    while (i < lines.length) {
+      const clean = lines[i].replace(/\*\*/g,'').trim();
+      const optM = clean.match(/^([A-E])[\.\)]\s*(.+)$/);
+      if (optM) { options.push({ letter: optM[1], text: optM[2] }); i++; }
+      else break;
+    }
+
+    let correctLetter = '';
+    while (i < lines.length) {
+      const clean = lines[i].replace(/\*\*/g,'').trim();
+      const caM = clean.match(/^Correct Answer\s*[:\.]?\s*([A-E])/i);
+      if (caM) { correctLetter = caM[1]; i++; break; }
+      if (/^[A-E][\.\)]\s/.test(clean)) break;
+      if (/^Explanation/i.test(clean)) break;
+      i++;
+    }
+
+    let expLines = [];
+    if (i < lines.length && /^Explanation/i.test(lines[i].replace(/\*\*/g,'').trim())) i++;
+    while (i < lines.length) {
+      const clean = lines[i].replace(/\*\*/g,'').trim();
+      if (/^Question\s+\d+\s*:/i.test(clean.replace(/[*#]/g,''))) break;
+      if (clean === '---') { i++; break; }
+      if (clean) expLines.push(clean);
+      i++;
+    }
+
+    if (!qText || options.length < 2 || !correctLetter) continue;
+    const correctIdx = options.findIndex(o => o.letter === correctLetter);
+    if (correctIdx === -1) continue;
+
+    questions.push({
+      category,
+      text: qText,
+      options: options.map(o => o.text),
+      correct: correctIdx,
+      explanation: expLines.join('\n'),
+      aiGenerated: false
+    });
+  }
+
+  if (questions.length === 0) {
+    showParseStatus('No questions found. Check the file matches the expected format.', false);
+    return;
+  }
+
+  BANK = questions;
+  const topics = [...new Set(BANK.map(q => q.category))].sort();
+  showParseStatus(`✓ Parsed ${BANK.length} question${BANK.length > 1 ? 's' : ''} across ${topics.length} topic${topics.length > 1 ? 's' : ''}.`, true);
+  const chips = document.getElementById('topic-chips');
+  chips.innerHTML = topics.map(t => `<span class="chip">${t} (${BANK.filter(q=>q.category===t).length})</span>`).join('');
+  document.getElementById('btn-use-bank').style.display = 'block';
+}
+
+function showParseStatus(msg, ok) {
+  const el = document.getElementById('parse-status');
+  el.style.display = 'block';
+  el.className = 'parse-status ' + (ok === true ? 'parse-ok' : ok === false ? 'parse-err' : '');
+  el.style.color = ok === null ? 'var(--slate)' : '';
+  el.textContent = msg;
+}
+
+function activateBank() {
+  const sel = document.getElementById('reg-topic');
+  sel.innerHTML = '<option value="all">All Topics (Mixed)</option>';
+  const topics = [...new Set(BANK.map(q => q.category))].sort();
+  topics.forEach(t => {
+    const o = document.createElement('option');
+    o.value = t; o.textContent = `${t} (${BANK.filter(q=>q.category===t).length})`;
+    sel.appendChild(o);
+  });
+  updateBankBadge();
+  document.getElementById('admin-panel').classList.remove('active');
+  document.getElementById('reg-fname').value = '';
+  document.getElementById('reg-lname').value = '';
+  showScreen('screen-reg');
+}
+
+function updateBankBadge() {
+  const badge = document.getElementById('bank-info-badge');
+  const hasKey = !!getApiKey();
+  if (BANK.length > 0) {
+    const topics = [...new Set(BANK.map(q => q.category))];
+    badge.className = 'bank-info bi-ok';
+    badge.textContent = `✓ ${BANK.length} questions · ${topics.length} topics loaded`;
+  } else if (hasKey) {
+    badge.className = 'bank-info bi-ai';
+    badge.textContent = '✦ AI will generate questions on demand';
+  } else {
+    badge.className = 'bank-info bi-warn';
+    badge.textContent = '⚠ No bank loaded — add an API key for AI generation';
+  }
+}
+
+// ── AI QUESTION GENERATION ────────────────────────────────
+async function generateAIQuestions(topic, level, count) {
+  const key = getApiKey();
+  if (!key) throw new Error('No API key set. Open admin panel to add one.');
+
+  const levelHint = level === 'Pre-clinical'
+    ? 'basic science level (anatomy, physiology, pathology, pharmacology fundamentals)'
+    : 'clinical level (diagnosis, management, investigations, treatment)';
+
+  const prompt = `You are a medical education expert. Generate exactly ${count} high-quality MCQ questions on the topic: "${topic}" at ${levelHint} for medical students.
+
+Return ONLY a JSON array, no preamble, no markdown fences, no explanation outside the JSON. Each object must have:
+{
+  "text": "The question stem",
+  "options": ["Option A text", "Option B text", "Option C text", "Option D text"],
+  "correct": 0,
+  "explanation": "Detailed clinical explanation of why the answer is correct and why others are wrong. Include memory tips."
+}
+
+"correct" is the zero-based index of the correct option.
+Make questions clinically relevant, evidence-based, and appropriately challenging.
+Do NOT repeat topics from this list if possible. Vary the question types (diagnosis, mechanism, treatment, investigation).`;
+
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 4000,
+      messages: [{ role: 'user', content: prompt }]
+    })
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error?.message || `API error ${response.status}`);
+  }
+
+  const data = await response.json();
+  const raw = data.content.map(b => b.text || '').join('').trim();
+  const clean = raw.replace(/^```json\s*/,'').replace(/^```\s*/,'').replace(/```\s*$/,'').trim();
+  const parsed = JSON.parse(clean);
+
+  return parsed.map(q => ({
+    category: topic,
+    text: q.text,
+    options: q.options,
+    correct: q.correct,
+    explanation: q.explanation,
+    aiGenerated: true
+  }));
+}
+
+// ── REGISTRATION ──────────────────────────────────────────
+async function startQuiz() {
+  const fname = document.getElementById('reg-fname').value.trim();
+  const lname = document.getElementById('reg-lname').value.trim();
+  const level = document.getElementById('reg-level').value;
+  const topic = document.getElementById('reg-topic').value;
+  const countVal = document.getElementById('reg-count').value;
+  const errEl = document.getElementById('reg-error');
+  errEl.style.display = 'none';
+
+  if (!fname || !lname) { showErr(errEl, 'Please enter your full name.'); return; }
+  if (!level) { showErr(errEl, 'Please select your student level.'); return; }
+
+  const hasBank = BANK.length > 0;
+  const hasKey = !!getApiKey();
+
+  if (!hasBank && !hasKey) {
+    showErr(errEl, 'No question bank loaded and no API key set. Ask your admin to set up the quiz first.');
+    return;
+  }
+
+  participant = { name: fname + ' ' + lname, level };
+  curIdx = 0; score = 0; results = [];
+  aiGeneratedPool = [];
+
+  let pool = topic === 'all' ? [...BANK] : BANK.filter(q => q.category === topic);
+  shuffle(pool);
+  const desiredCount = countVal === 'all' ? Math.max(pool.length, 10) : parseInt(countVal);
+
+  // Work out how many AI questions we need
+  const bankCount = pool.length;
+  const aiNeeded = Math.max(0, desiredCount - bankCount);
+
+  if (aiNeeded > 0 && !hasKey) {
+    showErr(errEl, `Only ${bankCount} bank question${bankCount !== 1 ? 's' : ''} available for this topic and no API key for AI generation. Try fewer questions or a different topic.`);
+    return;
+  }
+
+  document.getElementById('admin-panel').classList.remove('active');
+  showScreen('screen-quiz');
+
+  // Take bank questions first
+  SESSION = pool.slice(0, Math.min(bankCount, desiredCount));
+
+  // If we need AI questions, generate them now (shown as loading)
+  if (aiNeeded > 0) {
+    const genTopic = topic === 'all' ? pickAITopic() : topic;
+    showGenerating(genTopic, aiNeeded);
+    try {
+      const aiQs = await generateAIQuestions(genTopic, level, aiNeeded);
+      aiGeneratedPool = aiQs;
+      SESSION = [...SESSION, ...aiQs];
+    } catch(e) {
+      // If AI fails but we have some bank questions, continue with those
+      if (SESSION.length > 0) {
+        hideGenerating();
+      } else {
+        showGeneratingError(e.message);
+        return;
+      }
+    }
+    hideGenerating();
+  }
+
+  if (SESSION.length === 0) {
+    showErr(errEl, 'Could not load any questions. Please try again.');
+    showScreen('screen-reg');
+    return;
+  }
+
+  loadQuestion();
+}
+
+function pickAITopic() {
+  const medTopics = ['Cardiology','Respiratory Medicine','Neurology','Gastroenterology',
+    'Infectious Disease','Pharmacology','Endocrinology','Surgery','Obstetrics & Gynaecology',
+    'Renal Medicine','Haematology','Dermatology','Psychiatry','Musculoskeletal'];
+  return medTopics[Math.floor(Math.random() * medTopics.length)];
+}
+
+function showGenerating(topic, count) {
+  const area = document.getElementById('question-area');
+  area.innerHTML = `<div class="generating-card">
+    <div class="gen-spinner"></div>
+    <div class="gen-text">✦ Generating ${count} AI question${count>1?'s':''}</div>
+    <div class="gen-sub">Topic: ${topic} · Please wait…</div>
+  </div>`;
+  // Pause timer while generating
+  clearInterval(timerInterval);
+  document.getElementById('timer-num').textContent = '—';
+  document.getElementById('t-arc').style.strokeDashoffset = 0;
+}
+
+function hideGenerating() {
+  const area = document.getElementById('question-area');
+  area.innerHTML = `<div class="question-card" id="question-card">
+    <div class="q-cat" id="q-cat"></div>
+    <div class="q-text" id="q-text"></div>
+    <div class="options-list" id="options-list"></div>
+  </div>`;
+}
+
+function showGeneratingError(msg) {
+  const area = document.getElementById('question-area');
+  area.innerHTML = `<div class="generating-card" style="border-color:rgba(232,64,64,.3)">
+    <div style="font-size:28px;margin-bottom:12px">⚠</div>
+    <div class="gen-text" style="color:var(--red)">AI generation failed</div>
+    <div class="gen-sub" style="margin-bottom:16px">${msg}</div>
+    <button class="btn-restart" onclick="restartQuiz()" style="max-width:200px;margin:0 auto">← Go Back</button>
+  </div>`;
+}
+
+function showErr(el, msg) { el.textContent = msg; el.style.display = 'block'; }
+
+// ── QUIZ LOGIC ────────────────────────────────────────────
+function loadQuestion() {
+  answered = false; timeLeft = 60;
+  document.getElementById('timeout-msg').textContent = '';
+  const q = SESSION[curIdx];
+  const total = SESSION.length;
+
+  document.getElementById('q-counter').textContent = `Q ${curIdx + 1} of ${total}`;
+  document.getElementById('progress-fill').style.width = `${(curIdx / total) * 100}%`;
+
+  const catEl = document.getElementById('q-cat');
+  catEl.innerHTML = q.category + (q.aiGenerated ? ' <span class="ai-tag">✦ AI</span>' : '');
+  document.getElementById('q-text').textContent = q.text;
+
+  const list = document.getElementById('options-list');
+  list.innerHTML = '';
+  const L = ['A','B','C','D','E'];
+  q.options.forEach((opt, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'opt-btn';
+    btn.innerHTML = `<span class="opt-letter">${L[i]}</span><span>${opt}</span>`;
+    btn.onclick = () => selectAnswer(i);
+    list.appendChild(btn);
+  });
+
+  updateArc(60, 60);
+  document.getElementById('timer-num').textContent = '60';
+  document.getElementById('t-arc').style.stroke = '#00C9B1';
+  clearInterval(timerInterval);
+  timerInterval = setInterval(tick, 1000);
+}
+
+function tick() {
+  timeLeft--;
+  document.getElementById('timer-num').textContent = timeLeft;
+  updateArc(timeLeft, 60);
+  if (timeLeft <= 15) document.getElementById('t-arc').style.stroke = '#F5A623';
+  if (timeLeft <= 5) document.getElementById('t-arc').style.stroke = '#E84040';
+  if (timeLeft <= 0) {
+    clearInterval(timerInterval);
+    if (!answered) {
+      answered = true;
+      document.getElementById('timeout-msg').textContent = '⏱ Time\'s up!';
+      const btns = document.querySelectorAll('.opt-btn');
+      btns.forEach((b, i) => {
+        b.disabled = true;
+        if (i === SESSION[curIdx].correct) b.classList.add('correct');
+        else b.classList.add('dimmed');
+      });
+      results.push({ q: SESSION[curIdx], userAns: -1, correct: false, timedOut: true });
+      setTimeout(() => showExplanation(-1), 800);
+    }
+  }
+}
+
+function updateArc(t, max) {
+  const arc = document.getElementById('t-arc');
+  if (arc) arc.style.strokeDashoffset = CIRC - (t / max) * CIRC;
+}
+
+function selectAnswer(idx) {
+  if (answered) return;
+  answered = true;
+  clearInterval(timerInterval);
+  const q = SESSION[curIdx];
+  const btns = document.querySelectorAll('.opt-btn');
+  const ok = idx === q.correct;
+  btns.forEach((b, i) => {
+    b.disabled = true;
+    if (i === q.correct) b.classList.add('correct');
+    else if (i === idx) b.classList.add('wrong');
+    else b.classList.add('dimmed');
+  });
+  if (ok) score++;
+  results.push({ q, userAns: idx, correct: ok, timedOut: false });
+  setTimeout(() => showExplanation(idx), 500);
+}
+
+function showExplanation(userAns) {
+  const q = SESSION[curIdx];
+  const ok = userAns === q.correct;
+  const to = userAns === -1;
+  const L = ['A','B','C','D','E'];
+
+  const badge = document.getElementById('ov-badge');
+  if (to) { badge.className = 'ov-badge badge-to'; badge.textContent = '⏱ Time expired'; }
+  else if (ok) { badge.className = 'ov-badge badge-ok'; badge.textContent = '✓ Correct'; }
+  else { badge.className = 'ov-badge badge-ng'; badge.textContent = '✗ Incorrect'; }
+
+  const ansEl = document.getElementById('ov-ans');
+  if (to) {
+    ansEl.innerHTML = `<strong>Correct answer:</strong> ${L[q.correct]}. ${q.options[q.correct]}`;
+  } else if (ok) {
+    ansEl.innerHTML = `<strong>Your answer:</strong> ${L[userAns]}. ${q.options[userAns]}`;
+  } else {
+    ansEl.innerHTML = `<strong>Your answer:</strong> ${L[userAns]}. ${q.options[userAns]}<br>`
+      + `<span style="color:var(--green)"><strong>Correct:</strong> ${L[q.correct]}. ${q.options[q.correct]}</span>`;
+  }
+
+  document.getElementById('ov-exp').textContent = q.explanation;
+
+  const isLast = curIdx >= SESSION.length - 1;
+  const nb = document.getElementById('btn-next');
+  nb.textContent = isLast ? 'View Results →' : 'Next Question →';
+  nb.onclick = isLast ? showResults : nextQ;
+  document.getElementById('overlay').classList.add('show');
+}
+
+function nextQ() {
+  document.getElementById('overlay').classList.remove('show');
+  curIdx++;
+  loadQuestion();
+}
+
+// ── RESULTS ──────────────────────────────────────────────
+function showResults() {
+  document.getElementById('overlay').classList.remove('show');
+  const total = SESSION.length;
+  const pct = Math.round((score / total) * 100);
+  const wrong = results.filter(r => !r.correct && !r.timedOut).length;
+  const timedOut = results.filter(r => r.timedOut).length;
+  const aiCount = results.filter(r => r.q.aiGenerated).length;
+
+  let grade, gc;
+  if (pct >= 80) { grade='A'; gc='gA'; }
+  else if (pct >= 65) { grade='B'; gc='gB'; }
+  else if (pct >= 50) { grade='C'; gc='gC'; }
+  else if (pct >= 40) { grade='D'; gc='gD'; }
+  else { grade='F'; gc='gF'; }
+
+  document.getElementById('res-pct').textContent = pct + '%';
+  const ge = document.getElementById('res-grade');
+  ge.textContent = grade; ge.className = 'grade-badge ' + gc;
+  document.getElementById('res-name').textContent = participant.name;
+  document.getElementById('res-level').textContent = participant.level + ' Student'
+    + (aiCount > 0 ? ` · ${aiCount} AI-generated question${aiCount>1?'s':''}` : '');
+
+  document.getElementById('res-correct').textContent = score;
+  document.getElementById('res-wrong').textContent = wrong;
+  document.getElementById('res-timed').textContent = timedOut;
+
+  const arc = document.getElementById('res-arc');
+  const circ = 364.4;
+  setTimeout(() => {
+    arc.style.strokeDashoffset = circ - (pct / 100) * circ;
+    arc.style.stroke = pct >= 65 ? '#00C9B1' : pct >= 40 ? '#F5A623' : '#E84040';
+  }, 200);
+
+  const L = ['A','B','C','D','E'];
+  const rl = document.getElementById('review-list');
+  rl.innerHTML = '';
+  results.forEach((r, idx) => {
+    let ans = '';
+    if (r.timedOut) {
+      ans = `<span style="color:var(--amber)">Timed out</span> — Correct: ${L[r.q.correct]}. ${r.q.options[r.q.correct]}`;
+    } else if (r.correct) {
+      ans = `<span class="rc">Correct: ${L[r.userAns]}. ${r.q.options[r.userAns]}</span>`;
+    } else {
+      ans = `<span class="rw">Your answer: ${L[r.userAns]}. ${r.q.options[r.userAns]}</span><br>`
+          + `<span class="rc">Correct: ${L[r.q.correct]}. ${r.q.options[r.q.correct]}</span>`;
+    }
+    const ic = r.timedOut ? 'ic-to' : r.correct ? 'ic-ok' : 'ic-ng';
+    const sym = r.timedOut ? '⏱' : r.correct ? '✓' : '✗';
+    const aiNote = r.q.aiGenerated ? '<div class="ai-note">✦ AI-generated question</div>' : '';
+    rl.innerHTML += `<div class="rev-item">
+      <div class="rev-top">
+        <div class="rev-icon ${ic}">${sym}</div>
+        <div class="rev-q"><strong>Q${idx+1}.</strong> ${r.q.text}${aiNote}</div>
+      </div>
+      <div class="rev-ans">${ans}</div>
+    </div>`;
+  });
+
+  showScreen('screen-results');
+}
+
+function restartQuiz() {
+  updateBankBadge();
+  showScreen('screen-reg');
+}
+
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  window.scrollTo(0, 0);
+}
+
+function shuffle(a) {
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+}
+
+// Init badge
+updateBankBadge();
+</script>
+</body>
+</html>
