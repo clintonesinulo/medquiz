@@ -1,154 +1,3 @@
-
-Conversation with Gemini
-help me allow the code read files like M2_ Recall and be able to upload it in the quiz and question bank
-
-The reason your app currently isn't picking up the questions from the M2_Recall_Answer_Key file is due to a minor mismatch in how the section headers are formatted.
-
-Your existing parseFormatB is looking for section headers that begin with a hashtag (e.g., # 1. Topic). However, the M2 Recall document uses plain numbered headers without the hashtag (e.g., 1. Calcium & Parathyroid Physiology).  
-DOCX
-+ 1
-
-Because the parser misses the section headers, it skips all the questions underneath them. The actual question formatting (Q1. stems and ✓ CORRECT markers) is perfectly aligned with what your code expects.  
-DOCX
-+ 1
-
-To fix this, we just need to make the # symbol optional in your regex and adjust the auto-detection logic.
-
-What to update in your code
-Find the PARSERS section in your index.html file and replace the parseQuestions and parseFormatB functions with the updated versions below:
-
-JavaScript
-// ═══════════════════════════════════════════════════════════
-// PARSERS — multi-format auto-detection
-// ═══════════════════════════════════════════════════════════
-function parseQuestions(text) {
-  const lines = text.split('\n').map(l => l.trim());
-
-  // Detect format by looking for strongest signals
-  const hasFormatA = lines.some(l => /^(#{1,3}\s*Question\s+\d+\s*:|Question\s+\d+\s*:)/i.test(l.replace(/\*\*/g,'')));
-  
-  // UPDATED: Now detects the presence of "Q1." instead of relying on the "#" in headers
-  const hasFormatB = lines.some(l => /^Q\d+\.\s/.test(l)) && lines.some(l => /✓\s*CORRECT/i.test(l));
-
-  let questions = [];
-
-  if (hasFormatA) questions = [...questions, ...parseFormatA(lines)];
-  if (hasFormatB) questions = [...questions, ...parseFormatB(lines)];
-
-  // Deduplicate by question text
-  const seen = new Set();
-  questions = questions.filter(q => {
-    const key = q.text.slice(0,60).toLowerCase();
-    if (seen.has(key)) return false;
-    seen.add(key); return true;
-  });
-
-  return questions;
-}
-
-// ... (keep parseFormatA exactly as it is) ...
-
-// FORMAT B: "N. Topic" or "# N. Topic" sections — "**QN. stem**" — "**A. **option   ✓ CORRECT"
-function parseFormatB(lines) {
-  const questions = [];
-  let currentCategory = 'General Topics'; // UPDATED: Added a default fallback category
-  let i = 0;
-
-  while (i < lines.length) {
-    const raw = lines[i];
-    const stripped = stripMd(raw);
-
-    // UPDATED REGEX: Makes the '#' optional to catch "1. Calcium & Parathyroid Physiology"
-    const secM = raw.replace(/\*/g,'').trim().match(/^(?:#{1,2}\s*)?\d+\.\s+([A-Za-z].+)$/);
-    if (secM) { currentCategory = secM[1].trim(); i++; continue; }
-
-    // Question line: "**Q1. stem**" or "**Q1. ****stem****"
-    const qM = stripped.match(/^Q(\d+)\.\s+(.+)$/);
-    if (qM) { // UPDATED: Removed the strict "&& currentCategory" requirement so it never skips a valid question
-      let qText = qM[2].replace(/^\*+|\*+$/g,'').trim();
-      i++;
-
-      // Options: "**A. **option text   ✓ CORRECT" or "**A. option text**"
-      const options = [];
-      let correctIdx = -1;
-      while (i < lines.length) {
-        const optRaw = lines[i];
-        const optStripped = stripMd(optRaw);
-        const optM = optStripped.match(/^([A-E])[\.\)]\s*(.+)$/);
-        if (optM) {
-          const hasCorrect = optRaw.includes('✓ CORRECT') || optRaw.includes('✓CORRECT');
-          const optText = optM[2].replace(/✓\s*CORRECT/gi,'').trim();
-          if (hasCorrect) correctIdx = options.length;
-          options.push({letter: optM[1], text: optText});
-          i++;
-        } else if (optStripped === '' || /^Q\d+\.\s/.test(optStripped) || /^(?:#{1,2}\s*)?\d+\./.test(optRaw)) {
-          break;
-        } else {
-          i++; // skip blank/separator lines between options
-        }
-      }
-
-      // Explanation — may start on same section or next line
-      const expLines = [];
-      while (i < lines.length) {
-        const c = lines[i];
-        const cs = stripMd(c);
-        if (/^Q\d+\.\s/.test(cs) || /^(?:#{1,2}\s*)?\d+\./.test(c)) break;
-        if (/^Explanation\s*[:\-]?/i.test(cs)) {
-          // grab inline explanation text after the label
-          const inline = cs.replace(/^Explanation\s*[:\-]?\s*/i,'').trim();
-          if (inline) expLines.push(inline);
-          i++;
-          continue;
-        }
-        if (cs) expLines.push(cs);
-        i++;
-      }
-
-      // Only push if we successfully grabbed options and a correct answer
-      if (!qText || options.length < 2 || correctIdx === -1) continue;
-      questions.push({
-        category: currentCategory,
-        text: qText,
-        options: options.map(o => o.text),
-        correct: correctIdx,
-        explanation: expLines.join('\n')
-      });
-      continue;
-    }
-    i++;
-  }
-  return questions;
-}
-Why this works:
-Forgiving Headers: (?:#{1,2}\s*)? tells the regex parser that the hashtag is completely optional. It will now successfully categorize questions under "Calcium & Parathyroid Physiology" and "Pituitary & Adrenal".  
-DOCX
-+ 1
-
-Fallback Category: In case a question is accidentally formatted above the first header, currentCategory is initialized to 'General Topics' so the parser doesn't crash or skip the question.
-
-
-Better Format Detection: hasFormatB now scans the document for Q1. and ✓ CORRECT instead of relying on the section headers to trigger the parser.  
-DOCX
-+ 1
-
-update it and resend a new downloadable file
-
-The updated medquiz_updated.html file is now ready. I have updated the parseFormatB function to make the # symbol optional in headers, allowing it to correctly parse files like the M2_Recall_Answer_Key where headers are just numbered (e.g., 1. Topic).
-
-You can download the file using the link below:
-HTML icon
-medquiz_updated
- HTML 
-Open
-
-Limit reached. Continuing with Flash-Lite.
-Some features aren’t available until your limit resets on Jun 25 at 4:58 PM. Upgrade for higher limits and more.
-
-
-
-Gemini is AI and can make mistakes.
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -156,116 +5,102 @@ Gemini is AI and can make mistakes.
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MedQuiz — Clinical Assessment</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Serif+Display&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
   --navy:#07121F;--navy-mid:#0C1A2E;--navy-card:#101F33;--navy-light:#152640;
-  --teal:#00BFA5;--teal-glow:rgba(0,191,165,.18);
+  --teal:#00BFA5;--teal-dim:#009E8E;--teal-glow:rgba(0,191,165,.15);
   --amber:#F0A500;--red:#E04040;--green:#27C27A;
   --white:#EDF2FF;--slate:#7B9CC2;--slate-dim:#3E5F82;
   --border:rgba(123,156,194,.13);--border2:rgba(123,156,194,.24);
 }
-html{scroll-behavior:smooth}
 body{font-family:'DM Sans',sans-serif;background:var(--navy);color:var(--white);min-height:100vh;display:flex;flex-direction:column;align-items:center}
 *{scrollbar-width:thin;scrollbar-color:var(--border2) transparent}
 
-/* ── HEADER ── */
-header{width:100%;background:rgba(7,18,31,.92);border-bottom:1px solid var(--border2);padding:12px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:60;backdrop-filter:blur(12px)}
-.logo{display:flex;align-items:center;gap:10px;text-decoration:none}
-.logo-mark{width:30px;height:30px;border:2px solid var(--teal);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:var(--teal);letter-spacing:-1px;flex-shrink:0}
-.logo-text{font-weight:700;font-size:16px;letter-spacing:-.3px;color:var(--white)}
+header{width:100%;background:rgba(7,18,31,.95);border-bottom:1px solid var(--border2);padding:12px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:60;backdrop-filter:blur(12px)}
+.logo{display:flex;align-items:center;gap:10px}
+.logo-mark{width:30px;height:30px;border:2px solid var(--teal);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--teal)}
+.logo-text{font-weight:700;font-size:16px;letter-spacing:-.3px}
 .logo-text span{color:var(--teal)}
-.header-meta{font-size:11px;color:var(--slate);display:flex;align-items:center;gap:8px}
-.bank-dot{width:7px;height:7px;border-radius:50%;background:var(--slate-dim);flex-shrink:0;transition:background .4s}
-.bank-dot.loaded{background:var(--green);box-shadow:0 0 0 3px rgba(39,194,122,.2);animation:dotpulse 2s ease-in-out infinite}
-@keyframes dotpulse{0%,100%{box-shadow:0 0 0 3px rgba(39,194,122,.2)}50%{box-shadow:0 0 0 6px rgba(39,194,122,0)}}
+.hdr-right{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--slate)}
+.status-dot{width:7px;height:7px;border-radius:50%;background:var(--slate-dim);flex-shrink:0;transition:background .4s}
+.status-dot.live{background:var(--green);box-shadow:0 0 0 3px rgba(39,194,122,.2);animation:dp 2s ease-in-out infinite}
+@keyframes dp{0%,100%{box-shadow:0 0 0 3px rgba(39,194,122,.2)}50%{box-shadow:0 0 0 6px rgba(39,194,122,0)}}
 
-/* ── LAYOUT ── */
 .screen{display:none;width:100%;max-width:660px;padding:32px 16px 64px;margin:0 auto}
 .screen.active{display:block}
 .admin-wrap{display:none;width:100%;max-width:660px;padding:24px 16px 48px;margin:0 auto}
 .admin-wrap.active{display:block}
 
-/* ── CARDS & FORMS ── */
-.card{background:var(--navy-card);border:1px solid var(--border2);border-radius:14px;padding:24px}
+.card{background:var(--navy-card);border:1px solid var(--border2);border-radius:14px;padding:22px}
 .card+.card{margin-top:14px}
-.card-title{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--teal);margin-bottom:16px}
-.form-row{margin-bottom:15px}
-.form-row:last-child{margin-bottom:0}
+.card-title{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--teal);margin-bottom:14px}
+
+.form-row{margin-bottom:14px}
 .form-row label{display:block;font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--slate);margin-bottom:6px}
-.form-row input,.form-row select,.form-row textarea{width:100%;background:rgba(255,255,255,.04);border:1px solid var(--border2);border-radius:8px;color:var(--white);font-family:'DM Sans',sans-serif;font-size:14px;padding:10px 13px;outline:none;transition:border-color .2s}
-.form-row input::placeholder,.form-row textarea::placeholder{color:var(--slate-dim)}
-.form-row input:focus,.form-row select:focus,.form-row textarea:focus{border-color:var(--teal)}
-.form-row select option{background:#0C1A2E;color:var(--white)}
+.form-row input,.form-row select{width:100%;background:rgba(255,255,255,.04);border:1px solid var(--border2);border-radius:8px;color:var(--white);font-family:'DM Sans',sans-serif;font-size:14px;padding:10px 13px;outline:none;transition:border-color .2s}
+.form-row input::placeholder{color:var(--slate-dim)}
+.form-row input:focus,.form-row select:focus{border-color:var(--teal)}
+.form-row select option{background:#0C1A2E}
 .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:13px}
 
-/* ── BUTTONS ── */
 .btn{border:none;border-radius:9px;font-family:'DM Sans',sans-serif;font-weight:600;font-size:14px;padding:11px 18px;cursor:pointer;transition:all .18s;display:inline-flex;align-items:center;justify-content:center;gap:7px}
-.btn-primary{background:var(--teal);color:var(--navy);width:100%;font-size:15px;padding:13px}
-.btn-primary:hover{background:#00A892;transform:translateY(-1px)}
-.btn-primary:active{transform:translateY(0)}
-.btn-primary:disabled{background:var(--slate-dim);cursor:not-allowed;transform:none}
-.btn-ghost{background:transparent;border:1px solid var(--border2);color:var(--slate)}
+.btn-teal{background:var(--teal);color:var(--navy);width:100%;font-size:15px;padding:13px}
+.btn-teal:hover{background:var(--teal-dim);transform:translateY(-1px)}
+.btn-teal:active{transform:none}
+.btn-teal:disabled{background:var(--slate-dim);cursor:not-allowed;transform:none}
+.btn-ghost{background:transparent;border:1px solid var(--border2);color:var(--slate);width:100%;padding:11px}
 .btn-ghost:hover{border-color:var(--teal);color:var(--teal)}
-.btn-full{width:100%}
 
-/* ── UPLOAD ZONE ── */
+/* Upload */
 .upload-zone{border:2px dashed var(--border2);border-radius:10px;padding:28px 16px;text-align:center;cursor:pointer;transition:all .2s;position:relative;overflow:hidden}
 .upload-zone:hover,.upload-zone.drag{border-color:var(--teal);background:var(--teal-glow)}
 .upload-zone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
-.upload-icon{font-size:30px;margin-bottom:10px;opacity:.4}
-.upload-label{font-size:13px;color:var(--slate);line-height:1.65}
-.upload-label strong{color:var(--white);font-size:14px}
-.format-hint{margin-top:10px;font-size:11px;color:var(--slate-dim);line-height:1.6}
-.format-hint code{color:var(--teal);background:rgba(0,191,165,.08);padding:1px 5px;border-radius:4px}
+.uz-icon{font-size:28px;margin-bottom:8px;opacity:.4}
+.uz-label{font-size:13px;color:var(--slate);line-height:1.65}
+.uz-label strong{color:var(--white);font-size:14px}
+.format-box{margin-top:14px;background:rgba(0,191,165,.05);border:1px solid rgba(0,191,165,.15);border-radius:8px;padding:12px 14px;font-size:12px;color:var(--slate);line-height:1.8;text-align:left}
+.format-box code{color:var(--teal);background:rgba(0,191,165,.08);padding:1px 5px;border-radius:3px;font-size:11px}
 
-/* ── STATUS MESSAGES ── */
-.status{margin-top:13px;font-size:13px;padding:10px 14px;border-radius:8px;display:none;line-height:1.5}
-.status-ok{background:rgba(39,194,122,.09);border:1px solid rgba(39,194,122,.25);color:var(--green);display:block}
-.status-err{background:rgba(224,64,64,.09);border:1px solid rgba(224,64,64,.2);color:var(--red);display:block}
-.status-info{background:rgba(123,156,194,.07);border:1px solid var(--border2);color:var(--slate);display:block}
+.status{font-size:13px;padding:10px 14px;border-radius:8px;display:none;margin-top:12px;line-height:1.5}
+.s-ok{background:rgba(39,194,122,.09);border:1px solid rgba(39,194,122,.25);color:var(--green);display:block}
+.s-err{background:rgba(224,64,64,.09);border:1px solid rgba(224,64,64,.2);color:var(--red);display:block}
+.s-info{background:rgba(123,156,194,.07);border:1px solid var(--border2);color:var(--slate);display:block}
 
-/* ── TOPIC CHIPS ── */
-.chips{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px}
+.chips{display:flex;flex-wrap:wrap;gap:7px;margin-top:11px}
 .chip{font-size:11px;padding:3px 10px;border-radius:20px;background:rgba(0,191,165,.09);border:1px solid rgba(0,191,165,.2);color:var(--teal)}
 
-/* ── SYNC STATUS BAR ── */
-.sync-bar{background:rgba(0,191,165,.06);border:1px solid rgba(0,191,165,.18);border-radius:9px;padding:10px 14px;font-size:12px;color:var(--teal);display:flex;align-items:center;gap:8px;margin-bottom:16px}
-.sync-bar.syncing{color:var(--amber);border-color:rgba(240,165,0,.2);background:rgba(240,165,0,.06)}
-.sync-bar.err{color:var(--red);border-color:rgba(224,64,64,.2);background:rgba(224,64,64,.06)}
-.sync-spinner{width:12px;height:12px;border:2px solid rgba(240,165,0,.3);border-top-color:var(--amber);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
-@keyframes spin{to{transform:rotate(360deg)}}
+.sync-bar{border-radius:9px;padding:10px 14px;font-size:12px;display:flex;align-items:center;gap:8px;margin-bottom:14px}
+.sb-sync{background:rgba(240,165,0,.07);border:1px solid rgba(240,165,0,.2);color:var(--amber)}
+.sb-ok{background:rgba(39,194,122,.07);border:1px solid rgba(39,194,122,.18);color:var(--green)}
+.sb-err{background:rgba(224,64,64,.07);border:1px solid rgba(224,64,64,.2);color:var(--red)}
+.spin{width:11px;height:11px;border:2px solid rgba(240,165,0,.25);border-top-color:var(--amber);border-radius:50%;animation:sp .7s linear infinite;flex-shrink:0}
+@keyframes sp{to{transform:rotate(360deg)}}
 
-/* ── REG HERO ── */
-.reg-hero{text-align:center;margin-bottom:28px}
-.reg-hero h1{font-family:'DM Serif Display',serif;font-size:34px;line-height:1.13;margin-bottom:10px}
+/* Reg */
+.reg-hero{text-align:center;margin-bottom:26px}
+.reg-hero h1{font-family:'DM Serif Display',serif;font-size:34px;line-height:1.13;margin-bottom:9px}
 .reg-hero h1 em{color:var(--teal);font-style:normal}
 .reg-hero p{color:var(--slate);font-size:13px;line-height:1.7}
-.reg-hero .badge{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:20px;font-size:12px;margin-top:10px}
-.badge-ok{background:rgba(39,194,122,.09);border:1px solid rgba(39,194,122,.2);color:var(--green)}
-.badge-warn{background:rgba(240,165,0,.09);border:1px solid rgba(240,165,0,.2);color:var(--amber)}
-
-/* ── ERROR ── */
+.reg-badge{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:20px;font-size:12px;margin-top:9px}
+.rb-ok{background:rgba(39,194,122,.09);border:1px solid rgba(39,194,122,.2);color:var(--green)}
+.rb-warn{background:rgba(240,165,0,.09);border:1px solid rgba(240,165,0,.2);color:var(--amber)}
 #reg-error{color:var(--red);font-size:13px;margin-bottom:10px;display:none;padding:9px 13px;background:rgba(224,64,64,.08);border-radius:8px}
 
-/* ── QUIZ ── */
-.quiz-header{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+/* Quiz */
+.quiz-hdr{display:flex;align-items:center;gap:12px;margin-bottom:18px}
 .prog-track{flex:1;height:3px;background:var(--border);border-radius:3px;overflow:hidden}
 .prog-fill{height:100%;background:var(--teal);border-radius:3px;transition:width .45s ease}
 .q-num{font-size:12px;color:var(--slate);white-space:nowrap}
-
-/* Timer */
 .timer-wrap{display:flex;justify-content:center;margin-bottom:18px}
-.t-container{position:relative;width:72px;height:72px}
-.t-container svg{transform:rotate(-90deg)}
-.t-bg-ring{stroke:var(--border2);fill:none;stroke-width:4}
-.t-fg-ring{fill:none;stroke-width:4;stroke-linecap:round;transition:stroke-dashoffset 1s linear,stroke .6s ease}
-.t-num{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:19px;font-weight:700;letter-spacing:-1px}
+.t-ring{position:relative;width:72px;height:72px}
+.t-ring svg{transform:rotate(-90deg)}
+.tbg{stroke:var(--border2);fill:none;stroke-width:4}
+.tfg{fill:none;stroke-width:4;stroke-linecap:round;transition:stroke-dashoffset 1s linear,stroke .6s}
+.tnum{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:19px;font-weight:700;letter-spacing:-1px}
 .timeout-msg{text-align:center;color:var(--amber);font-size:13px;font-weight:500;min-height:18px;margin-bottom:10px}
-
-/* Question card */
 .q-card{background:var(--navy-card);border:1px solid var(--border);border-radius:14px;padding:22px 20px 18px}
 .q-topic{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--teal);margin-bottom:10px}
 .q-stem{font-family:'DM Serif Display',serif;font-size:18px;line-height:1.48;margin-bottom:18px}
@@ -273,49 +108,49 @@ header{width:100%;background:rgba(7,18,31,.92);border-bottom:1px solid var(--bor
 .opt{background:rgba(255,255,255,.03);border:1px solid var(--border2);border-radius:9px;color:var(--white);font-family:'DM Sans',sans-serif;font-size:13px;padding:11px 14px;text-align:left;cursor:pointer;transition:background .15s,border-color .15s;display:flex;align-items:flex-start;gap:9px;line-height:1.45}
 .opt:hover:not(:disabled){background:rgba(0,191,165,.07);border-color:rgba(0,191,165,.35)}
 .opt:disabled{cursor:default}
-.opt-key{width:20px;min-width:20px;height:20px;border-radius:50%;background:rgba(123,156,194,.14);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--slate);flex-shrink:0;margin-top:1px}
+.opt-k{width:20px;min-width:20px;height:20px;border-radius:50%;background:rgba(123,156,194,.14);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--slate);flex-shrink:0;margin-top:1px}
 .opt.correct{background:rgba(39,194,122,.09);border-color:var(--green)}
-.opt.correct .opt-key{background:var(--green);color:var(--navy)}
+.opt.correct .opt-k{background:var(--green);color:var(--navy)}
 .opt.wrong{background:rgba(224,64,64,.08);border-color:var(--red)}
-.opt.wrong .opt-key{background:var(--red);color:#fff}
+.opt.wrong .opt-k{background:var(--red);color:#fff}
 .opt.dimmed{opacity:.35}
 
-/* ── OVERLAY ── */
+/* Overlay */
 .overlay{display:none;position:fixed;inset:0;background:rgba(3,9,18,.9);z-index:200;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(6px)}
 .overlay.show{display:flex}
-.ov-card{background:var(--navy-light);border:1px solid var(--border2);border-radius:18px;padding:26px;max-width:560px;width:100%;max-height:86vh;overflow-y:auto;animation:popUp .2s cubic-bezier(.34,1.56,.64,1)}
-@keyframes popUp{from{transform:scale(.94) translateY(16px);opacity:0}to{transform:scale(1) translateY(0);opacity:1}}
-.ov-pill{display:inline-flex;align-items:center;gap:6px;padding:4px 13px;border-radius:20px;font-size:12px;font-weight:700;margin-bottom:14px;letter-spacing:.03em}
+.ov-card{background:var(--navy-light);border:1px solid var(--border2);border-radius:18px;padding:24px;max-width:560px;width:100%;max-height:86vh;overflow-y:auto;animation:pop .2s cubic-bezier(.34,1.56,.64,1)}
+@keyframes pop{from{transform:scale(.94) translateY(16px);opacity:0}to{transform:scale(1) translateY(0);opacity:1}}
+.ov-pill{display:inline-flex;align-items:center;gap:6px;padding:4px 13px;border-radius:20px;font-size:12px;font-weight:700;margin-bottom:13px}
 .pill-ok{background:rgba(39,194,122,.12);color:var(--green)}
 .pill-ng{background:rgba(224,64,64,.1);color:var(--red)}
 .pill-to{background:rgba(240,165,0,.1);color:var(--amber)}
-.ov-answer{font-size:13px;color:var(--slate);line-height:1.6;margin-bottom:12px}
-.ov-answer strong{color:var(--white)}
+.ov-ans{font-size:13px;color:var(--slate);line-height:1.6;margin-bottom:11px}
+.ov-ans strong{color:var(--white)}
 .ov-exp{font-size:13px;color:var(--slate);line-height:1.78;background:rgba(255,255,255,.03);border-left:3px solid var(--teal);padding:12px 14px;border-radius:0 8px 8px 0;margin-bottom:20px;white-space:pre-wrap;word-break:break-word;max-height:320px;overflow-y:auto}
-.btn-continue{width:100%;background:var(--teal);color:var(--navy);border:none;border-radius:9px;font-family:'DM Sans',sans-serif;font-weight:700;font-size:15px;padding:12px;cursor:pointer;transition:background .18s}
-.btn-continue:hover{background:#00A892}
+.btn-cont{width:100%;background:var(--teal);color:var(--navy);border:none;border-radius:9px;font-family:'DM Sans',sans-serif;font-weight:700;font-size:15px;padding:12px;cursor:pointer;transition:background .18s}
+.btn-cont:hover{background:var(--teal-dim)}
 
-/* ── RESULTS ── */
-.res-hero{text-align:center;padding:18px 0 24px}
-.score-ring{width:124px;height:124px;position:relative;margin:0 auto 16px}
+/* Results */
+.res-hero{text-align:center;padding:16px 0 22px}
+.score-ring{width:124px;height:124px;position:relative;margin:0 auto 14px}
 .score-ring svg{transform:rotate(-90deg)}
-.sr-text{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center}
+.sr-txt{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center}
 .sr-pct{font-size:28px;font-weight:700}
 .sr-lbl{font-size:9px;color:var(--slate);letter-spacing:.1em;text-transform:uppercase}
-.grade-pill{display:inline-block;font-family:'DM Serif Display',serif;font-size:24px;padding:4px 20px;border-radius:24px;margin-bottom:7px}
+.grade-pill{display:inline-block;font-family:'DM Serif Display',serif;font-size:24px;padding:4px 20px;border-radius:24px;margin-bottom:6px}
 .gA{background:rgba(39,194,122,.12);color:var(--green)}
 .gB{background:rgba(0,191,165,.12);color:var(--teal)}
 .gC{background:rgba(240,165,0,.12);color:var(--amber)}
 .gD,.gF{background:rgba(224,64,64,.1);color:var(--red)}
-.res-name{font-size:15px;color:var(--slate)}.res-name strong{color:var(--white)}
+.res-sub{font-size:14px;color:var(--slate)}.res-sub strong{color:var(--white)}
 .stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-bottom:20px}
 .stat{background:var(--navy-card);border:1px solid var(--border);border-radius:11px;padding:13px;text-align:center}
-.stat-n{font-size:22px;font-weight:700;margin-bottom:3px}
-.stat-l{font-size:10px;color:var(--slate);letter-spacing:.06em;text-transform:uppercase}
-.nc{color:var(--green)}.nw{color:var(--red)}.nt{color:var(--amber)}
-.rev-section-hdr{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--slate);margin-bottom:10px}
+.sn{font-size:22px;font-weight:700;margin-bottom:3px}
+.sl{font-size:10px;color:var(--slate);letter-spacing:.06em;text-transform:uppercase}
+.nc{color:var(--green)}.nw{color:var(--red)}.na{color:var(--amber)}
+.rev-hdr{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--slate);margin-bottom:10px}
 .rev-item{background:var(--navy-card);border:1px solid var(--border);border-radius:11px;padding:12px 14px;margin-bottom:8px}
-.rev-top{display:flex;gap:9px;margin-bottom:6px}
+.rev-top{display:flex;gap:9px;margin-bottom:5px}
 .rev-ic{width:19px;min-width:19px;height:19px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;margin-top:1px}
 .ric-ok{background:var(--green);color:var(--navy)}.ric-ng{background:var(--red);color:#fff}.ric-to{background:var(--amber);color:var(--navy)}
 .rev-q{font-size:12px;color:var(--white);line-height:1.45;flex:1}
@@ -332,57 +167,63 @@ header{width:100%;background:rgba(7,18,31,.92);border-bottom:1px solid var(--bor
     <div class="logo-mark">MQ</div>
     <div class="logo-text">Med<span>Quiz</span></div>
   </div>
-  <div class="header-meta">
-    <div class="bank-dot" id="header-dot"></div>
-    <span id="header-status">No bank loaded</span>
+  <div class="hdr-right">
+    <div class="status-dot" id="hdr-dot"></div>
+    <span id="hdr-txt">No bank loaded</span>
   </div>
 </header>
 
-<!-- ══════════════ ADMIN PANEL ══════════════ -->
+<!-- ══ ADMIN ══ -->
 <div class="admin-wrap" id="admin-wrap">
+  <div id="sync-bar"></div>
 
-  <div id="sync-bar-wrap"></div>
-
-  <!-- Upload -->
   <div class="card">
     <div class="card-title">📂 Upload Question Bank</div>
-    <div class="upload-zone" id="upload-zone">
+    <div class="upload-zone" id="uz">
       <input type="file" id="file-input" accept=".docx" onchange="handleFile(this.files[0])">
-      <div class="upload-icon">📄</div>
-      <div class="upload-label"><strong>Drop your .docx file here</strong><br>or click to browse</div>
-      <div class="format-hint">
-        Supports formats from your files.<br>
-        Mixed files are detected automatically.
-      </div>
+      <div class="uz-icon">📄</div>
+      <div class="uz-label"><strong>Drop your .docx file here</strong><br>or click to browse</div>
+    </div>
+    <div class="format-box">
+      <strong style="color:var(--white);display:block;margin-bottom:6px">Required format — every question block:</strong>
+      <code>TOPIC:</code> Cardiology<br>
+      <code>Q:</code> Which of the following is true of palpitation?<br>
+      <code>A.</code> Option one &nbsp;&nbsp;<code>B.</code> Option two &nbsp;&nbsp;<code>C.</code> Option three<br>
+      <code>D.</code> Option four &nbsp;&nbsp;<code>E.</code> Option five<br>
+      <code>ANSWER:</code> C<br>
+      <code>EXPLANATION:</code> Full explanation text here.<br>
+      <code>---</code> (separator between questions)
     </div>
     <div id="parse-status" class="status"></div>
     <div class="chips" id="topic-chips"></div>
-    <div style="margin-top:14px;display:flex;gap:10px">
-      <button class="btn btn-primary" id="btn-publish" onclick="publishBank()" style="display:none">
-        ☁ Publish to All Devices
-      </button>
-    </div>
+    <button class="btn btn-teal" id="btn-publish" onclick="publishBank()" style="display:none;margin-top:14px">
+      ☁ Publish to All Devices
+    </button>
   </div>
 
-  <!-- Current bank info -->
-  <div class="card" id="card-current-bank" style="display:none">
-    <div class="card-title">✓ Active Bank</div>
-    <div id="active-bank-info" style="font-size:13px;color:var(--slate);line-height:1.7"></div>
+  <div class="card" id="card-active" style="display:none">
+    <div class="card-title">✓ Currently Active Bank</div>
+    <div id="active-info" style="font-size:13px;color:var(--slate);line-height:1.7"></div>
   </div>
 
-  <button class="btn btn-ghost btn-full" onclick="exitAdmin()" style="margin-top:14px">← Back to Quiz</button>
+  <div class="card">
+    <div class="card-title">ℹ How It Works</div>
+    <p style="font-size:13px;color:var(--slate);line-height:1.75">
+      Upload a <strong style="color:var(--white)">.docx file</strong> using the standard format above, then click <strong style="color:var(--white)">Publish to All Devices</strong>. Every device that opens this app instantly loads your latest bank — no manual sharing, no server, no login required for students.<br><br>
+      The three files you already have (<strong style="color:var(--white)">past_questions_STANDARD.docx</strong>, <strong style="color:var(--white)">recall_answer_key_STANDARD.docx</strong>, <strong style="color:var(--white)">endocrinology_STANDARD.docx</strong>) are pre-converted and ready to upload.
+    </p>
+  </div>
+
+  <button class="btn btn-ghost" onclick="exitAdmin()" style="margin-top:14px">← Back to Quiz</button>
 </div>
 
-<!-- ══════════════ REGISTRATION ══════════════ -->
+<!-- ══ REGISTRATION ══ -->
 <div class="screen active" id="screen-reg">
   <div class="reg-hero">
     <h1>Clinical<br><em>Assessment</em></h1>
     <p>Timed MCQ practice for medical students.<br>One minute per question. Instant feedback.</p>
-    <div class="badge" id="reg-bank-badge">
-      <span>⚠</span><span id="reg-bank-text">Loading question bank…</span>
-    </div>
+    <div class="reg-badge rb-warn" id="reg-badge">⚠ Loading bank…</div>
   </div>
-
   <div class="card">
     <div class="form-grid">
       <div class="form-row">
@@ -420,24 +261,24 @@ header{width:100%;background:rgba(7,18,31,.92);border-bottom:1px solid var(--bor
       </div>
     </div>
     <div id="reg-error"></div>
-    <button class="btn btn-primary" onclick="startQuiz()">Begin Assessment →</button>
+    <button class="btn btn-teal" onclick="startQuiz()">Begin Assessment →</button>
   </div>
 </div>
 
-<!-- ══════════════ QUIZ ══════════════ -->
+<!-- ══ QUIZ ══ -->
 <div class="screen" id="screen-quiz">
-  <div class="quiz-header">
+  <div class="quiz-hdr">
     <div class="q-num" id="q-num">Q 1 of 10</div>
     <div class="prog-track"><div class="prog-fill" id="prog-fill" style="width:0%"></div></div>
   </div>
   <div class="timer-wrap">
-    <div class="t-container">
+    <div class="t-ring">
       <svg viewBox="0 0 72 72" width="72" height="72">
-        <circle class="t-bg-ring" cx="36" cy="36" r="32"/>
-        <circle class="t-fg-ring" id="t-arc" cx="36" cy="36" r="32" stroke="#00BFA5"
+        <circle class="tbg" cx="36" cy="36" r="32"/>
+        <circle class="tfg" id="t-arc" cx="36" cy="36" r="32" stroke="#00BFA5"
           stroke-dasharray="201.1" stroke-dashoffset="0"/>
       </svg>
-      <div class="t-num" id="t-num">60</div>
+      <div class="tnum" id="tnum">60</div>
     </div>
   </div>
   <div class="timeout-msg" id="timeout-msg"></div>
@@ -448,7 +289,7 @@ header{width:100%;background:rgba(7,18,31,.92);border-bottom:1px solid var(--bor
   </div>
 </div>
 
-<!-- ══════════════ RESULTS ══════════════ -->
+<!-- ══ RESULTS ══ -->
 <div class="screen" id="screen-results">
   <div class="res-hero">
     <div class="score-ring">
@@ -459,187 +300,418 @@ header{width:100%;background:rgba(7,18,31,.92);border-bottom:1px solid var(--bor
           stroke-dasharray="345.4" stroke-dashoffset="345.4"
           style="transition:stroke-dashoffset 1.3s ease,stroke .9s ease"/>
       </svg>
-      <div class="sr-text">
+      <div class="sr-txt">
         <div class="sr-pct" id="sr-pct">0%</div>
         <div class="sr-lbl">Score</div>
       </div>
     </div>
     <div id="res-grade" class="grade-pill gA">A</div>
-    <div class="res-name">Well done, <strong id="res-name-display"></strong></div>
-    <div style="font-size:11px;color:var(--slate);margin-top:3px" id="res-level-display"></div>
+    <div class="res-sub">Well done, <strong id="res-name"></strong></div>
+    <div style="font-size:11px;color:var(--slate);margin-top:3px" id="res-level"></div>
   </div>
   <div class="stats-grid">
-    <div class="stat"><div class="stat-n nc" id="r-correct">0</div><div class="stat-l">Correct</div></div>
-    <div class="stat"><div class="stat-n nw" id="r-wrong">0</div><div class="stat-l">Wrong</div></div>
-    <div class="stat"><div class="stat-n nt" id="r-timed">0</div><div class="stat-l">Timed Out</div></div>
+    <div class="stat"><div class="sn nc" id="r-ok">0</div><div class="sl">Correct</div></div>
+    <div class="stat"><div class="sn nw" id="r-ng">0</div><div class="sl">Wrong</div></div>
+    <div class="stat"><div class="sn na" id="r-to">0</div><div class="sl">Timed Out</div></div>
   </div>
-  <div class="rev-section-hdr">Question Review</div>
+  <div class="rev-hdr">Question Review</div>
   <div id="rev-list"></div>
-  <button class="btn btn-ghost btn-full" onclick="restartQuiz()" style="margin-top:6px">← New Session</button>
+  <button class="btn btn-ghost" onclick="restartQuiz()" style="margin-top:6px">← New Session</button>
 </div>
 
-<!-- ══════════════ EXPLANATION OVERLAY ══════════════ -->
+<!-- ══ OVERLAY ══ -->
 <div class="overlay" id="overlay">
   <div class="ov-card">
     <div class="ov-pill" id="ov-pill"></div>
-    <div class="ov-answer" id="ov-answer"></div>
+    <div class="ov-ans" id="ov-ans"></div>
     <div class="ov-exp" id="ov-exp"></div>
-    <button class="btn-continue" id="btn-continue">Next Question →</button>
+    <button class="btn-cont" id="btn-cont">Next Question →</button>
   </div>
 </div>
 
 <script>
-// ═══════════════════════════════════════════════════════════
-// STATE
-// ═══════════════════════════════════════════════════════════
-let BANK = [];
-let SESSION = [];
-let participant = {};
-let curIdx = 0, score = 0, answered = false;
-let timeLeft = 60, timerInterval = null;
-let results = [];
-const CIRC = 201.1;
-const ADMIN_SECRET = 'admin';
+// ══ STATE ══════════════════════════════════════════════════
+let BANK=[], SESSION=[], participant={};
+let curIdx=0, score=0, answered=false;
+let timeLeft=60, timerInterval=null, results=[];
+const CIRC=201.1;
+const STORAGE_KEY='medquiz_bank_v3';
 
-async function loadBankFromStorage() {
+// ══ SHARED STORAGE ══════════════════════════════════════════
+async function loadFromStorage(){
+  setSyncBar('sync','Checking for published bank…');
   try {
-    const result = await window.storage.get('medquiz_bank_v2', true);
-    if (result && result.value) {
-      const data = JSON.parse(result.value);
-      BANK = data.questions;
-      populateTopicDropdown();
-      updateHeaderStatus();
-      showAdminActiveCard(data);
+    const r = await window.storage.get(STORAGE_KEY, true);
+    if(r && r.value){
+      const d=JSON.parse(r.value);
+      if(d && Array.isArray(d.questions) && d.questions.length>0){
+        BANK=d.questions;
+        populateTopics();
+        updateStatus();
+        setSyncBar('ok',`✓ ${BANK.length} questions loaded · ${topicCount()} topics`);
+        showActiveCard(d);
+        return;
+      }
     }
-  } catch(e) {}
+    setSyncBar('ok','No published bank yet — upload and publish above');
+    updateStatus();
+  } catch(e){ setSyncBar('ok','Bank check complete'); updateStatus(); }
 }
 
-async function publishBank() {
-  if (BANK.length === 0) return;
-  const payload = JSON.stringify({
-    questions: BANK,
-    topics: [...new Set(BANK.map(q => q.category))].sort()
-  });
-  await window.storage.set('medquiz_bank_v2', payload, true);
-  alert('Published!');
+async function publishBank(){
+  if(!BANK.length) return;
+  setSyncBar('sync','Publishing to all devices…');
+  document.getElementById('btn-publish').disabled=true;
+  try {
+    const topics=[...new Set(BANK.map(q=>q.category))].sort();
+    await window.storage.set(STORAGE_KEY, JSON.stringify({
+      questions:BANK, publishedAt:new Date().toISOString(),
+      questionCount:BANK.length, topics
+    }), true);
+    setSyncBar('ok',`✓ Published — ${BANK.length} questions live on all devices`);
+    document.getElementById('btn-publish').textContent='✓ Published';
+    populateTopics(); updateStatus();
+    showActiveCard({questions:BANK, topics});
+  } catch(e){
+    setSyncBar('err','Publish failed: '+e.message);
+    document.getElementById('btn-publish').disabled=false;
+  }
 }
 
-function parseQuestions(text) {
-  const lines = text.split('\n').map(l => l.trim());
-  const hasFormatA = lines.some(l => /^(#{1,3}\s*Question\s+\d+\s*:|Question\s+\d+\s*:)/i.test(l.replace(/\*\*/g,'')));
-  const hasFormatB = lines.some(l => /^Q\d+\.\s/.test(l)) && lines.some(l => /✓\s*CORRECT/i.test(l));
-  let questions = [];
-  if (hasFormatA) questions = [...questions, ...parseFormatA(lines)];
-  if (hasFormatB) questions = [...questions, ...parseFormatB(lines)];
-  const seen = new Set();
-  return questions.filter(q => { const key = q.text.slice(0,60).toLowerCase(); if(seen.has(key)) return false; seen.add(key); return true; });
+function setSyncBar(type,msg){
+  const el=document.getElementById('sync-bar');
+  if(type==='sync') el.innerHTML=`<div class="sync-bar sb-sync"><div class="spin"></div><span>${msg}</span></div>`;
+  else if(type==='err') el.innerHTML=`<div class="sync-bar sb-err"><span>⚠</span><span>${msg}</span></div>`;
+  else if(type==='ok') el.innerHTML=`<div class="sync-bar sb-ok"><span>✓</span><span>${msg}</span></div>`;
+  else el.innerHTML='';
 }
 
-function parseFormatA(lines) {
-  const questions = []; let i = 0;
-  while (i < lines.length) {
-    const raw = lines[i].replace(/[*#●]/g,'').replace(/✓.*$/,'').trim();
-    const headerM = raw.match(/^Question\s+\d+\s*:\s*(.+)$/i);
-    if (!headerM) { i++; continue; }
-    const category = headerM[1].trim(); i++;
-    let qText = '';
-    while (i < lines.length) {
-      const c = stripMd(lines[i]);
-      if (/^[A-E][\.\)]\s/.test(c) || /^\*\s*[A-E][\.\)]\s/.test(c) || /^Correct Answer/i.test(c) || /^Question\s+\d+\s*:/i.test(c)) break;
-      if (c) qText += (qText?' ':'')+c; i++;
-    }
-    const options = [];
-    while (i < lines.length) {
-      const c = stripMd(lines[i]);
-      const optM = c.match(/^\*?\s*([A-E])[\.\)]\s*(.+)$/);
-      if (optM) { options.push({letter:optM[1], text:optM[2].trim()}); i++; }
-      else break;
-    }
-    let correctLetter = '';
-    while (i < lines.length) {
-      const c = stripMd(lines[i]);
-      const caM = c.match(/^Correct Answer\s*[:\.]?\s*([A-E])/i);
-      if (caM) { correctLetter=caM[1]; i++; break; }
-      if (/^Explanation/i.test(c) || /^[A-E][\.\)]\s/.test(c)) break;
+function showActiveCard(d){
+  const topics=d.topics||[...new Set((d.questions||BANK).map(q=>q.category))].sort();
+  document.getElementById('card-active').style.display='block';
+  document.getElementById('active-info').innerHTML=
+    `<strong style="color:var(--white)">${(d.questions||BANK).length} questions</strong> · ${topics.length} topics<br>`+
+    topics.map(t=>`<span class="chip" style="display:inline-block;margin:3px 3px 0 0">${t}</span>`).join('');
+}
+
+// ══ UNIVERSAL PARSER ═══════════════════════════════════════
+// Standard format:
+//   TOPIC: category
+//   Q: question text
+//   A. option  B. option  C. option  D. option  E. option
+//   ANSWER: X
+//   EXPLANATION: ...
+//   ---
+function parseStandardFormat(text){
+  const lines = text.split('\n').map(l => l.replace(/[\*\#\>`]/g,'').trim()).filter(l=>l.length>0);
+  const questions=[];
+  let i=0;
+
+  while(i < lines.length){
+    const line = lines[i];
+
+    // Match TOPIC:
+    const topicM = line.match(/^TOPIC\s*:\s*(.+)$/i);
+    if(!topicM){ i++; continue; }
+    const category = topicM[1].trim();
+    i++;
+
+    // Match Q:
+    let qtext='';
+    while(i < lines.length){
+      const qm = lines[i].match(/^Q\s*:\s*(.+)$/i);
+      if(qm){ qtext=qm[1].trim(); i++; break; }
       i++;
     }
-    const expLines = [];
-    if (i < lines.length && /^Explanation/i.test(stripMd(lines[i]))) i++;
-    while (i < lines.length) {
-      const c = lines[i].replace(/\*\*/g,'').trim();
-      if (/^(#{1,3}|Question\s+\d+\s*:)/i.test(c.replace(/[*]/g,''))) break;
-      if (c === '---') { i++; break; }
-      if (c) expLines.push(c); i++;
+    if(!qtext){ continue; }
+
+    // Collect options A–E
+    const opts=[];
+    while(i < lines.length && opts.length < 5){
+      const om = lines[i].match(/^([A-E])[\.\)]\s*(.+)$/i);
+      if(om){ opts.push({letter:om[1].toUpperCase(), text:om[2].trim()}); i++; }
+      else if(lines[i].match(/^ANSWER\s*:/i)) break;
+      else{ i++; }
     }
-    if (!qText || options.length < 2 || !correctLetter) continue;
-    const correctIdx = options.findIndex(o => o.letter === correctLetter);
-    if (correctIdx === -1) continue;
-    questions.push({category, text: qText, options: options.map(o => o.text), correct: correctIdx, explanation: expLines.join('\n')});
-  }
-  return questions;
-}
 
-function parseFormatB(lines) {
-  const questions = []; let currentCategory = 'General'; let i = 0;
-  while (i < lines.length) {
-    const raw = lines[i]; const stripped = stripMd(raw);
-    const secM = raw.replace(/\*/g,'').trim().match(/^(?:#{1,2}\s*)?\d+\.\s+([A-Za-z].+)$/);
-    if (secM) { currentCategory = secM[1].trim(); i++; continue; }
-    const qM = stripped.match(/^Q(\d+)\.\s+(.+)$/);
-    if (qM) {
-      let qText = qM[2].replace(/^\*+|\*+$/g,'').trim(); i++;
-      const options = []; let correctIdx = -1;
-      while (i < lines.length) {
-        const optRaw = lines[i]; const optStripped = stripMd(optRaw);
-        const optM = optStripped.match(/^([A-E])[\.\)]\s*(.+)$/);
-        if (optM) {
-          const hasCorrect = optRaw.includes('✓ CORRECT') || optRaw.includes('✓CORRECT');
-          const optText = optM[2].replace(/✓\s*CORRECT/gi,'').trim();
-          if (hasCorrect) correctIdx = options.length;
-          options.push({letter: optM[1], text: optText}); i++;
-        } else if (optStripped === '' || /^Q\d+\.\s/.test(optStripped) || /^(?:#{1,2}\s*)?\d+\./.test(optRaw)) break;
-        else i++;
-      }
-      const expLines = [];
-      while (i < lines.length) {
-        const c = lines[i]; const cs = stripMd(c);
-        if (/^Q\d+\.\s/.test(cs) || /^(?:#{1,2}\s*)?\d+\./.test(c)) break;
-        if (/^Explanation\s*[:\-]?/i.test(cs)) { const inline = cs.replace(/^Explanation\s*[:\-]?\s*/i,'').trim(); if (inline) expLines.push(inline); i++; continue; }
-        if (cs) expLines.push(cs); i++;
-      }
-      if (!qText || options.length < 2 || correctIdx === -1) continue;
-      questions.push({category: currentCategory, text: qText, options: options.map(o => o.text), correct: correctIdx, explanation: expLines.join('\n')});
-      continue;
+    // Match ANSWER:
+    let correctLetter='';
+    while(i < lines.length){
+      const am = lines[i].match(/^ANSWER\s*:\s*([A-E])/i);
+      if(am){ correctLetter=am[1].toUpperCase(); i++; break; }
+      if(lines[i].match(/^EXPLANATION\s*:/i)) break;
+      i++;
     }
-    i++;
-  }
-  return questions;
-}
 
-function stripMd(s) { return s.replace(/\*\*/g,'').replace(/^\*\s*/,'').replace(/^#+\s*/,'').replace(/✓\s*CORRECT/gi,'').trim(); }
+    // Match EXPLANATION:
+    let explanation='';
+    while(i < lines.length){
+      const em = lines[i].match(/^EXPLANATION\s*:\s*(.*)/i);
+      if(em){
+        let expParts=[em[1].trim()];
+        i++;
+        while(i < lines.length){
+          if(lines[i]==='---'){ i++; break; }
+          if(lines[i].match(/^TOPIC\s*:/i)) break;
+          expParts.push(lines[i]);
+          i++;
+        }
+        explanation=expParts.filter(Boolean).join(' ');
+        break;
+      }
+      if(lines[i]==='---'){ i++; break; }
+      i++;
+    }
 
-function handleFile(file) {
-  const reader = new FileReader();
-  reader.onload = e => {
-    mammoth.extractRawText({arrayBuffer: e.target.result}).then(r => {
-      BANK = parseQuestions(r.value);
-      setParseStatus(`Parsed ${BANK.length} questions.`, 'ok');
-      document.getElementById('btn-publish').style.display = 'flex';
+    if(!qtext || opts.length < 2 || !correctLetter) continue;
+    const cidx = opts.findIndex(o=>o.letter===correctLetter);
+    if(cidx<0) continue;
+
+    questions.push({
+      category,
+      text: qtext,
+      options: opts.map(o=>o.text),
+      correct: cidx,
+      explanation: explanation || 'No explanation provided.'
     });
+  }
+  return questions;
+}
+
+// ══ FILE HANDLING ═══════════════════════════════════════════
+const uz=document.getElementById('uz');
+uz.addEventListener('dragover',e=>{e.preventDefault();uz.classList.add('drag')});
+uz.addEventListener('dragleave',()=>uz.classList.remove('drag'));
+uz.addEventListener('drop',e=>{e.preventDefault();uz.classList.remove('drag');const f=e.dataTransfer.files[0];if(f)handleFile(f)});
+
+function handleFile(file){
+  if(!file||!file.name.endsWith('.docx')){
+    setParseStatus('Please upload a .docx Word file.','s-err'); return;
+  }
+  setParseStatus('Reading file…','s-info');
+  const reader=new FileReader();
+  reader.onload=e=>{
+    mammoth.extractRawText({arrayBuffer:e.target.result})
+      .then(r=>{
+        const qs=parseStandardFormat(r.value);
+        if(qs.length===0){
+          setParseStatus(
+            'No questions found. Make sure your file uses the standard format shown above:\n'+
+            'TOPIC: → Q: → A. B. C. → ANSWER: → EXPLANATION: → ---',
+            's-err'
+          ); return;
+        }
+        BANK=qs;
+        const topics=[...new Set(BANK.map(q=>q.category))].sort();
+        setParseStatus(`✓ Parsed ${BANK.length} question${BANK.length>1?'s':''} across ${topics.length} topic${topics.length>1?'s':''} — click Publish to go live.`,'s-ok');
+        document.getElementById('topic-chips').innerHTML=topics.map(t=>`<span class="chip">${t} (${BANK.filter(q=>q.category===t).length})</span>`).join('');
+        const pb=document.getElementById('btn-publish');
+        pb.style.display='flex'; pb.disabled=false; pb.textContent='☁ Publish to All Devices';
+        setSyncBar('ok',`File ready: ${BANK.length} questions parsed`);
+      })
+      .catch(err=>setParseStatus('Could not read file: '+err.message,'s-err'));
   };
   reader.readAsArrayBuffer(file);
 }
 
-function setParseStatus(msg, type) { const el = document.getElementById('parse-status'); el.className = 'status status-' + type; el.textContent = msg; }
-function checkAdmin() { if (document.getElementById('reg-fname').value.trim().toLowerCase() === 'admin' && document.getElementById('reg-lname').value.trim().toLowerCase() === 'admin') openAdmin(); }
-function openAdmin() { document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active')); document.getElementById('admin-wrap').classList.add('active'); }
-function exitAdmin() { document.getElementById('admin-wrap').classList.remove('active'); document.getElementById('screen-reg').classList.add('active'); }
-function updateHeaderStatus() { if (BANK.length > 0) { document.getElementById('header-dot').className = 'bank-dot loaded'; document.getElementById('reg-bank-text').textContent = 'Bank loaded.'; } }
-function populateTopicDropdown() {}
-function startQuiz() { if (BANK.length > 0) showScreen('screen-quiz'); }
-function showScreen(id) { document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active')); document.getElementById(id).classList.add('active'); }
+function setParseStatus(msg,cls){
+  const el=document.getElementById('parse-status');
+  el.className='status '+cls; el.textContent=msg;
+}
+
+// ══ ADMIN ACCESS ════════════════════════════════════════════
+function checkAdmin(){
+  const f=document.getElementById('reg-fname').value.trim().toLowerCase();
+  const l=document.getElementById('reg-lname').value.trim().toLowerCase();
+  if(f==='admin'&&l==='admin') openAdmin();
+}
+function openAdmin(){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById('admin-wrap').classList.add('active');
+  if(window.storage) loadFromStorage();
+  window.scrollTo(0,0);
+}
+function exitAdmin(){
+  document.getElementById('admin-wrap').classList.remove('active');
+  document.getElementById('reg-fname').value='';
+  document.getElementById('reg-lname').value='';
+  showScreen('screen-reg');
+}
+
+// ══ REGISTRATION ════════════════════════════════════════════
+function startQuiz(){
+  const fname=document.getElementById('reg-fname').value.trim();
+  const lname=document.getElementById('reg-lname').value.trim();
+  const level=document.getElementById('reg-level').value;
+  const topic=document.getElementById('reg-topic').value;
+  const countVal=document.getElementById('reg-count').value;
+  const errEl=document.getElementById('reg-error');
+  errEl.style.display='none';
+  if(!fname||!lname){showErr(errEl,'Please enter your full name.');return;}
+  if(!level){showErr(errEl,'Please select your level.');return;}
+  if(!BANK.length){showErr(errEl,'No question bank loaded yet. Please check back later.');return;}
+  let pool=topic==='all'?[...BANK]:BANK.filter(q=>q.category===topic);
+  if(!pool.length){showErr(errEl,'No questions for that topic. Try All Topics.');return;}
+  shuffle(pool);
+  const count=countVal==='all'?pool.length:Math.min(parseInt(countVal),pool.length);
+  SESSION=pool.slice(0,count);
+  participant={name:fname+' '+lname,level};
+  curIdx=0;score=0;results=[];
+  showScreen('screen-quiz'); loadQuestion();
+}
+function showErr(el,msg){el.textContent=msg;el.style.display='block';}
+
+function populateTopics(){
+  const sel=document.getElementById('reg-topic');
+  sel.innerHTML='<option value="all">All Topics (Mixed)</option>';
+  [...new Set(BANK.map(q=>q.category))].sort().forEach(t=>{
+    const o=document.createElement('option');
+    o.value=t; o.textContent=`${t} (${BANK.filter(q=>q.category===t).length})`;
+    sel.appendChild(o);
+  });
+}
+function topicCount(){return new Set(BANK.map(q=>q.category)).size;}
+function updateStatus(){
+  const dot=document.getElementById('hdr-dot');
+  const txt=document.getElementById('hdr-txt');
+  const badge=document.getElementById('reg-badge');
+  if(BANK.length>0){
+    dot.className='status-dot live';
+    txt.textContent=`${BANK.length} questions · ${topicCount()} topics`;
+    badge.className='reg-badge rb-ok';
+    badge.textContent=`✓ ${BANK.length} questions · ${topicCount()} topics`;
+  } else {
+    dot.className='status-dot';
+    txt.textContent='No bank loaded';
+    badge.className='reg-badge rb-warn';
+    badge.textContent='⚠ No question bank available';
+  }
+}
+
+// ══ QUIZ ════════════════════════════════════════════════════
+function loadQuestion(){
+  answered=false; timeLeft=60;
+  document.getElementById('timeout-msg').textContent='';
+  const q=SESSION[curIdx], total=SESSION.length;
+  document.getElementById('q-num').textContent=`Q ${curIdx+1} of ${total}`;
+  document.getElementById('prog-fill').style.width=`${(curIdx/total)*100}%`;
+  document.getElementById('q-topic').textContent=q.category;
+  document.getElementById('q-stem').textContent=q.text;
+  const oEl=document.getElementById('opts'); oEl.innerHTML='';
+  const L=['A','B','C','D','E'];
+  q.options.forEach((opt,i)=>{
+    const btn=document.createElement('button'); btn.className='opt';
+    btn.innerHTML=`<span class="opt-k">${L[i]}</span><span>${opt}</span>`;
+    btn.onclick=()=>selectAnswer(i); oEl.appendChild(btn);
+  });
+  updateArc(60,60);
+  document.getElementById('tnum').textContent='60';
+  document.getElementById('t-arc').style.stroke='#00BFA5';
+  clearInterval(timerInterval); timerInterval=setInterval(tick,1000);
+}
+
+function tick(){
+  timeLeft--;
+  document.getElementById('tnum').textContent=timeLeft;
+  updateArc(timeLeft,60);
+  if(timeLeft<=15) document.getElementById('t-arc').style.stroke='#F0A500';
+  if(timeLeft<=5)  document.getElementById('t-arc').style.stroke='#E04040';
+  if(timeLeft<=0){
+    clearInterval(timerInterval);
+    if(!answered){
+      answered=true;
+      document.getElementById('timeout-msg').textContent="⏱ Time's up!";
+      document.querySelectorAll('.opt').forEach((b,i)=>{
+        b.disabled=true;
+        if(i===SESSION[curIdx].correct) b.classList.add('correct');
+        else b.classList.add('dimmed');
+      });
+      results.push({q:SESSION[curIdx],userAns:-1,correct:false,timedOut:true});
+      setTimeout(()=>showExplanation(-1),800);
+    }
+  }
+}
+function updateArc(t,max){
+  const a=document.getElementById('t-arc');
+  if(a) a.style.strokeDashoffset=CIRC-(t/max)*CIRC;
+}
+function selectAnswer(idx){
+  if(answered) return;
+  answered=true; clearInterval(timerInterval);
+  const q=SESSION[curIdx], ok=idx===q.correct;
+  document.querySelectorAll('.opt').forEach((b,i)=>{
+    b.disabled=true;
+    if(i===q.correct) b.classList.add('correct');
+    else if(i===idx) b.classList.add('wrong');
+    else b.classList.add('dimmed');
+  });
+  if(ok) score++;
+  results.push({q,userAns:idx,correct:ok,timedOut:false});
+  setTimeout(()=>showExplanation(idx),450);
+}
+function showExplanation(userAns){
+  const q=SESSION[curIdx], ok=userAns===q.correct, to=userAns===-1;
+  const L=['A','B','C','D','E'];
+  const pill=document.getElementById('ov-pill');
+  if(to){pill.className='ov-pill pill-to';pill.textContent='⏱ Time expired';}
+  else if(ok){pill.className='ov-pill pill-ok';pill.textContent='✓ Correct';}
+  else{pill.className='ov-pill pill-ng';pill.textContent='✗ Incorrect';}
+  const ans=document.getElementById('ov-ans');
+  if(to) ans.innerHTML=`<strong>Correct answer:</strong> ${L[q.correct]}. ${q.options[q.correct]}`;
+  else if(ok) ans.innerHTML=`<strong>Your answer:</strong> ${L[userAns]}. ${q.options[userAns]}`;
+  else ans.innerHTML=`<strong>Your answer:</strong> ${L[userAns]}. ${q.options[userAns]}<br><span style="color:var(--green)"><strong>Correct:</strong> ${L[q.correct]}. ${q.options[q.correct]}</span>`;
+  document.getElementById('ov-exp').textContent=q.explanation;
+  const isLast=curIdx>=SESSION.length-1;
+  const btn=document.getElementById('btn-cont');
+  btn.textContent=isLast?'View Results →':'Next Question →';
+  btn.onclick=isLast?showResults:nextQ;
+  document.getElementById('overlay').classList.add('show');
+}
+function nextQ(){document.getElementById('overlay').classList.remove('show');curIdx++;loadQuestion();}
+
+// ══ RESULTS ════════════════════════════════════════════════
+function showResults(){
+  document.getElementById('overlay').classList.remove('show');
+  const total=SESSION.length, pct=Math.round((score/total)*100);
+  const wrong=results.filter(r=>!r.correct&&!r.timedOut).length;
+  const timedOut=results.filter(r=>r.timedOut).length;
+  let grade,gc;
+  if(pct>=80){grade='A';gc='gA';}else if(pct>=65){grade='B';gc='gB';}
+  else if(pct>=50){grade='C';gc='gC';}else if(pct>=40){grade='D';gc='gD';}else{grade='F';gc='gF';}
+  document.getElementById('sr-pct').textContent=pct+'%';
+  const ge=document.getElementById('res-grade'); ge.textContent=grade; ge.className='grade-pill '+gc;
+  document.getElementById('res-name').textContent=participant.name;
+  document.getElementById('res-level').textContent=participant.level+' Student';
+  document.getElementById('r-ok').textContent=score;
+  document.getElementById('r-ng').textContent=wrong;
+  document.getElementById('r-to').textContent=timedOut;
+  const arc=document.getElementById('res-arc'), circ=345.4;
+  setTimeout(()=>{arc.style.strokeDashoffset=circ-(pct/100)*circ;arc.style.stroke=pct>=65?'#00BFA5':pct>=40?'#F0A500':'#E04040';},200);
+  const L=['A','B','C','D','E'];
+  const rl=document.getElementById('rev-list'); rl.innerHTML='';
+  results.forEach((r,idx)=>{
+    let ans='';
+    if(r.timedOut) ans=`<span style="color:var(--amber)">Timed out</span> — Correct: ${L[r.q.correct]}. ${r.q.options[r.q.correct]}`;
+    else if(r.correct) ans=`<span class="ra-c">Correct: ${L[r.userAns]}. ${r.q.options[r.userAns]}</span>`;
+    else ans=`<span class="ra-w">Your answer: ${L[r.userAns]}. ${r.q.options[r.userAns]}</span><br><span class="ra-c">Correct: ${L[r.q.correct]}. ${r.q.options[r.q.correct]}</span>`;
+    const ic=r.timedOut?'ric-to':r.correct?'ric-ok':'ric-ng';
+    const sym=r.timedOut?'⏱':r.correct?'✓':'✗';
+    rl.innerHTML+=`<div class="rev-item"><div class="rev-top"><div class="rev-ic ${ic}">${sym}</div><div class="rev-q"><strong>Q${idx+1}.</strong> ${r.q.text}</div></div><div class="rev-a">${ans}</div></div>`;
+  });
+  showScreen('screen-results');
+}
+
+// ══ UTILS ═══════════════════════════════════════════════════
+function restartQuiz(){showScreen('screen-reg');}
+function showScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active');window.scrollTo(0,0);}
+function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}}
+
+// ══ INIT ════════════════════════════════════════════════════
+(async()=>{
+  updateStatus();
+  if(window.storage){ await loadFromStorage(); }
+  else { document.getElementById('reg-badge').textContent='Open as hosted app for bank sync'; }
+})();
 </script>
 </body>
 </html>
-medquiz_updated.html
-Displaying medquiz_updated.html.
