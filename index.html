@@ -177,33 +177,7 @@ header{width:100%;background:rgba(7,18,31,.95);border-bottom:1px solid var(--bor
 <div class="admin-wrap" id="admin-wrap">
   <div id="sync-bar"></div>
 
-  <!-- Firebase Setup -->
-  <div class="card" id="card-firebase">
-    <div class="card-title">🔥 Firebase Setup — Required for Cross-Device Sync</div>
-    <p style="font-size:12px;color:var(--slate);line-height:1.7;margin-bottom:14px">
-      Paste your Firebase config below to enable real-time sync across all phones and devices.
-      <strong style="color:var(--white)">One-time setup.</strong> Once saved it persists in this browser.
-      Get it free at <a href="https://console.firebase.google.com" target="_blank" style="color:var(--teal)">console.firebase.google.com</a> →
-      New project → Firestore Database → Project Settings → Your apps → Web app → Config object.
-      Set Firestore rules to <code style="color:var(--teal);font-size:11px">allow read, write: if true;</code> in Rules tab.
-    </p>
-    <div class="form-row">
-      <label>Firebase Config JSON</label>
-      <textarea id="fb-config-input" rows="5" placeholder='Paste either format:
-
-const firebaseConfig = {
-  apiKey: "AIza...",
-  projectId: "your-app-id",
-  ...
-};
-
-— or the raw JSON object —' style="font-size:11px;font-family:monospace;resize:vertical"></textarea>
-    </div>
-    <button class="btn btn-teal" onclick="saveFirebaseConfig()" style="padding:10px">Save & Connect Firebase</button>
-    <div id="fb-status" class="status" style="margin-top:10px"></div>
-  </div>
-
-  <!-- Upload -->
+    <!-- Upload -->
   <div class="card">
     <div class="card-title">📂 Upload Question Bank</div>
     <div class="upload-zone" id="uz">
@@ -370,10 +344,18 @@ let timeLeft=60, timerInterval=null, results=[];
 const CIRC=201.1;
 const STORAGE_KEY='medquiz_bank_v3';
 
-// ══ FIREBASE ════════════════════════════════════════════════
-let db = null; // Firestore instance, set after init
-const FB_CONFIG_KEY = 'medquiz_fb_config';
-const FS_DOC = 'bank/questions'; // Firestore path
+// ══ FIREBASE — hardcoded, auto-connects on every device ══════
+let db = null;
+
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyA5JEf7RBc-npXaX00M_0ElHfgonCbxfXk",
+  authDomain: "medquiz-47f4f.firebaseapp.com",
+  projectId: "medquiz-47f4f",
+  storageBucket: "medquiz-47f4f.firebasestorage.app",
+  messagingSenderId: "660404437672",
+  appId: "1:660404437672:web:d2b02702ed334a3163389d",
+  measurementId: "G-09H75SRQCH"
+};
 
 function loadFirebaseSDK(){
   return new Promise((resolve, reject) => {
@@ -386,73 +368,26 @@ function loadFirebaseSDK(){
     scripts.forEach(src => {
       const s = document.createElement('script');
       s.src = src;
-      s.onload = () => { loaded++; if(loaded===scripts.length) resolve(); };
-      s.onerror = () => reject(new Error('Failed to load Firebase SDK'));
+      s.onload = () => { loaded++; if(loaded === scripts.length) resolve(); };
+      s.onerror = () => reject(new Error('Failed to load Firebase SDK — check internet connection.'));
       document.head.appendChild(s);
     });
   });
 }
 
-async function initFirebase(config){
-  await loadFirebaseSDK();
-  if(!window.firebase.apps.length){
-    window.firebase.initializeApp(config);
-  }
-  db = window.firebase.firestore();
-}
-
-async function saveFirebaseConfig(){
-  let raw = document.getElementById('fb-config-input').value.trim();
-  if(!raw){ setFbStatus('Paste your Firebase config first.','s-err'); return; }
-
-  // Strip JS wrapper: "const firebaseConfig = {...};" or "var x = {...};"
-  raw = raw.replace(/^.*?=\s*/, '').replace(/;?\s*$/, '').trim();
-
-  // Convert JS object literal to JSON:
-  // 1. Add quotes around unquoted keys  (apiKey: → "apiKey":)
-  // 2. Convert single-quoted strings to double-quoted
-  let jsonStr = raw
-    .replace(/\/\/.*$/gm, '')                        // strip // comments
-    .replace(/,\s*([}\]])/g, '$1')                   // trailing commas
-    .replace(/([{,]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)\s*:/g, '$1"$2":')  // unquoted keys
-    .replace(/:\s*'([^']*)'/g, ': "$1"');             // single → double quoted values
-
-  let config;
-  try { config = JSON.parse(jsonStr); }
-  catch(e){
-    setFbStatus('Could not parse config: '+e.message+'. Paste the full firebaseConfig object exactly as Firebase gave it to you.','s-err');
-    return;
-  }
-  if(!config.projectId){ setFbStatus('Config missing projectId — copy the full config object from Firebase.','s-err'); return; }
-
-  setFbStatus('Connecting to Firebase…','s-info');
-  try {
-    await initFirebase(config);
-    // Test connection with a ping read
-    await db.collection('bank').doc('questions').get();
-    localStorage.setItem(FB_CONFIG_KEY, JSON.stringify(config));
-    setFbStatus('✓ Firebase connected! You can now publish questions to all devices.','s-ok');
-    setSyncBar('ok','✓ Firebase connected — ready to publish');
-    await loadFromStorage();
-  } catch(e){
-    setFbStatus('Connection failed: '+e.message+' — check your config and Firestore rules.','s-err');
-  }
-}
-
-function setFbStatus(msg, cls){
-  const el = document.getElementById('fb-status');
-  if(!el) return;
-  el.className = 'status '+cls; el.textContent = msg;
-}
-
 async function ensureFirebase(){
   if(db) return true;
-  const saved = localStorage.getItem(FB_CONFIG_KEY);
-  if(!saved) return false;
   try {
-    await initFirebase(JSON.parse(saved));
+    await loadFirebaseSDK();
+    if(!window.firebase.apps.length){
+      window.firebase.initializeApp(FIREBASE_CONFIG);
+    }
+    db = window.firebase.firestore();
     return true;
-  } catch(e){ return false; }
+  } catch(e){
+    console.error('Firebase init failed:', e.message);
+    return false;
+  }
 }
 
 // ══ BANK STORAGE (Firebase primary, localStorage fallback) ══
@@ -494,7 +429,7 @@ async function loadFromStorage(){
     }
   } catch(e){}
 
-  setSyncBar('ok', fbReady ? 'No bank published yet' : '⚠ Firebase not set up — bank is local only');
+  setSyncBar('ok', 'No bank published yet — upload a question bank above.');
   updateStatus();
 }
 
@@ -511,7 +446,7 @@ async function publishBank(){
     const payload = buildPayload(merged);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
     BANK = merged;
-    setSyncBar('ok', `✓ Saved locally — ${merged.length} questions. Set up Firebase to sync to all devices.`);
+    setSyncBar('ok', `✓ Saved locally — ${merged.length} questions (Firebase unavailable, check internet).`);
     populateTopics(); updateStatus(); showActiveCard(payload);
     pb.textContent = '✓ Saved locally'; return;
   }
@@ -954,12 +889,6 @@ function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random
 // ══ INIT ════════════════════════════════════════════════════
 (async()=>{
   updateStatus();
-  // Pre-fill Firebase config textarea if saved
-  const saved = localStorage.getItem(FB_CONFIG_KEY);
-  if(saved){
-    const el = document.getElementById('fb-config-input');
-    if(el) el.value = saved;
-  }
   await loadFromStorage();
 })();
 </script>
