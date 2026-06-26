@@ -177,6 +177,32 @@ header{width:100%;background:rgba(7,18,31,.95);border-bottom:1px solid var(--bor
 <div class="admin-wrap" id="admin-wrap">
   <div id="sync-bar"></div>
 
+  <!-- Firebase Setup -->
+  <div class="card" id="card-firebase">
+    <div class="card-title">🔥 Firebase Setup — Required for Cross-Device Sync</div>
+    <p style="font-size:12px;color:var(--slate);line-height:1.7;margin-bottom:14px">
+      Paste your Firebase config below to enable real-time sync across all phones and devices.
+      <strong style="color:var(--white)">One-time setup.</strong> Once saved it persists in this browser.
+      Get it free at <a href="https://console.firebase.google.com" target="_blank" style="color:var(--teal)">console.firebase.google.com</a> →
+      New project → Firestore Database → Project Settings → Your apps → Web app → Config object.
+      Set Firestore rules to <code style="color:var(--teal);font-size:11px">allow read, write: if true;</code> in Rules tab.
+    </p>
+    <div class="form-row">
+      <label>Firebase Config JSON</label>
+      <textarea id="fb-config-input" rows="5" placeholder='{
+  "apiKey": "AIza...",
+  "authDomain": "your-app.firebaseapp.com",
+  "projectId": "your-app-id",
+  "storageBucket": "your-app.appspot.com",
+  "messagingSenderId": "123456789",
+  "appId": "1:123:web:abc"
+}' style="font-size:11px;font-family:monospace;resize:vertical"></textarea>
+    </div>
+    <button class="btn btn-teal" onclick="saveFirebaseConfig()" style="padding:10px">Save & Connect Firebase</button>
+    <div id="fb-status" class="status" style="margin-top:10px"></div>
+  </div>
+
+  <!-- Upload -->
   <div class="card">
     <div class="card-title">📂 Upload Question Bank</div>
     <div class="upload-zone" id="uz">
@@ -204,14 +230,6 @@ header{width:100%;background:rgba(7,18,31,.95);border-bottom:1px solid var(--bor
   <div class="card" id="card-active" style="display:none">
     <div class="card-title">✓ Currently Active Bank</div>
     <div id="active-info" style="font-size:13px;color:var(--slate);line-height:1.7"></div>
-  </div>
-
-  <div class="card">
-    <div class="card-title">ℹ How It Works</div>
-    <p style="font-size:13px;color:var(--slate);line-height:1.75">
-      Upload a <strong style="color:var(--white)">.docx file</strong> using the standard format above, then click <strong style="color:var(--white)">Publish to All Devices</strong>. Every device that opens this app instantly loads your latest bank — no manual sharing, no server, no login required for students.<br><br>
-      The three files you already have (<strong style="color:var(--white)">past_questions_STANDARD.docx</strong>, <strong style="color:var(--white)">recall_answer_key_STANDARD.docx</strong>, <strong style="color:var(--white)">endocrinology_STANDARD.docx</strong>) are pre-converted and ready to upload.
-    </p>
   </div>
 
   <button class="btn btn-ghost" onclick="exitAdmin()" style="margin-top:14px">← Back to Quiz</button>
@@ -351,108 +369,214 @@ let timeLeft=60, timerInterval=null, results=[];
 const CIRC=201.1;
 const STORAGE_KEY='medquiz_bank_v3';
 
-// ══ STORAGE LAYER ═══════════════════════════════════════════
-// Tries window.storage (artifact env) first, falls back to localStorage.
-const useSharedStorage = typeof window.storage !== 'undefined' && window.storage !== null;
+// ══ FIREBASE ════════════════════════════════════════════════
+let db = null; // Firestore instance, set after init
+const FB_CONFIG_KEY = 'medquiz_fb_config';
+const FS_DOC = 'bank/questions'; // Firestore path
 
-async function storageGet(key){
-  if(useSharedStorage){
-    try{ const r=await window.storage.get(key,true); return r?r.value:null; }catch(e){ return null; }
-  } else {
-    return localStorage.getItem(key);
+function loadFirebaseSDK(){
+  return new Promise((resolve, reject) => {
+    if(window.firebase){ resolve(); return; }
+    const scripts = [
+      'https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js',
+      'https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js'
+    ];
+    let loaded = 0;
+    scripts.forEach(src => {
+      const s = document.createElement('script');
+      s.src = src;
+      s.onload = () => { loaded++; if(loaded===scripts.length) resolve(); };
+      s.onerror = () => reject(new Error('Failed to load Firebase SDK'));
+      document.head.appendChild(s);
+    });
+  });
+}
+
+async function initFirebase(config){
+  await loadFirebaseSDK();
+  if(!window.firebase.apps.length){
+    window.firebase.initializeApp(config);
+  }
+  db = window.firebase.firestore();
+}
+
+async function saveFirebaseConfig(){
+  const raw = document.getElementById('fb-config-input').value.trim();
+  const statusEl = document.getElementById('fb-status');
+  if(!raw){ setFbStatus('Paste your Firebase config JSON first.','s-err'); return; }
+  let config;
+  try { config = JSON.parse(raw); }
+  catch(e){ setFbStatus('Invalid JSON — check for missing quotes or commas.','s-err'); return; }
+  if(!config.projectId){ setFbStatus('Config missing projectId — copy the full config object.','s-err'); return; }
+
+  setFbStatus('Connecting to Firebase…','s-info');
+  try {
+    await initFirebase(config);
+    // Test connection with a ping read
+    await db.collection('bank').doc('questions').get();
+    localStorage.setItem(FB_CONFIG_KEY, JSON.stringify(config));
+    setFbStatus('✓ Firebase connected! You can now publish questions to all devices.','s-ok');
+    setSyncBar('ok','✓ Firebase connected — ready to publish');
+    await loadFromStorage();
+  } catch(e){
+    setFbStatus('Connection failed: '+e.message+' — check your config and Firestore rules.','s-err');
   }
 }
-async function storageSet(key,value){
-  if(useSharedStorage){
-    await window.storage.set(key,value,true);
-  } else {
-    localStorage.setItem(key,value);
-  }
+
+function setFbStatus(msg, cls){
+  const el = document.getElementById('fb-status');
+  if(!el) return;
+  el.className = 'status '+cls; el.textContent = msg;
 }
 
-// ══ CUMULATIVE BANK STORAGE ══════════════════════════════════
-// Each publish MERGES new questions into the stored bank.
-// Deduplication is by question text (first 80 chars).
+async function ensureFirebase(){
+  if(db) return true;
+  const saved = localStorage.getItem(FB_CONFIG_KEY);
+  if(!saved) return false;
+  try {
+    await initFirebase(JSON.parse(saved));
+    return true;
+  } catch(e){ return false; }
+}
+
+// ══ BANK STORAGE (Firebase primary, localStorage fallback) ══
 
 async function loadFromStorage(){
-  setSyncBar('sync','Checking for published bank…');
+  setSyncBar('sync','Loading question bank…');
+  const fbReady = await ensureFirebase();
+
+  if(fbReady){
+    try {
+      const doc = await db.collection('bank').doc('questions').get();
+      if(doc.exists){
+        const d = doc.data();
+        if(d && Array.isArray(d.questions) && d.questions.length > 0){
+          BANK = d.questions;
+          populateTopics(); updateStatus();
+          setSyncBar('ok', `✓ ${BANK.length} questions · ${topicCount()} topics · synced from Firebase`);
+          showActiveCard(d); return;
+        }
+      }
+      setSyncBar('ok','Firebase connected — no bank published yet. Upload and publish above.');
+      updateStatus(); return;
+    } catch(e){
+      setSyncBar('err','Firebase read failed: '+e.message+' — check Firestore rules.');
+    }
+  }
+
+  // Fallback: localStorage
   try {
-    const raw = await storageGet(STORAGE_KEY);
+    const raw = localStorage.getItem(STORAGE_KEY);
     if(raw){
-      const d=JSON.parse(raw);
-      if(d && Array.isArray(d.questions) && d.questions.length>0){
-        BANK=d.questions;
+      const d = JSON.parse(raw);
+      if(d && Array.isArray(d.questions) && d.questions.length > 0){
+        BANK = d.questions;
         populateTopics(); updateStatus();
-        setSyncBar('ok',`✓ ${BANK.length} questions loaded · ${topicCount()} topics`);
+        setSyncBar('ok', `✓ ${BANK.length} questions loaded (local only — set up Firebase for cross-device sync)`);
         showActiveCard(d); return;
       }
     }
-    setSyncBar('ok','No published bank yet — upload and publish above');
-    updateStatus();
-  } catch(e){ setSyncBar('ok','Ready — no bank published yet'); updateStatus(); }
+  } catch(e){}
+
+  setSyncBar('ok', fbReady ? 'No bank published yet' : '⚠ Firebase not set up — bank is local only');
+  updateStatus();
 }
 
 async function publishBank(){
   if(!BANK.length) return;
-  setSyncBar('sync','Publishing…');
-  document.getElementById('btn-publish').disabled=true;
+  const pb = document.getElementById('btn-publish');
+  pb.disabled = true;
+  const fbReady = await ensureFirebase();
+
+  if(!fbReady){
+    // No Firebase — save locally only
+    setSyncBar('sync','Saving locally (no Firebase configured)…');
+    const merged = await mergeWithStored_local(BANK);
+    const payload = buildPayload(merged);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    BANK = merged;
+    setSyncBar('ok', `✓ Saved locally — ${merged.length} questions. Set up Firebase to sync to all devices.`);
+    populateTopics(); updateStatus(); showActiveCard(payload);
+    pb.textContent = '✓ Saved locally'; return;
+  }
+
+  setSyncBar('sync','Publishing to Firebase (all devices)…');
   try {
-    // Load whatever is already stored
-    let existingQuestions=[];
+    // Load existing from Firestore
+    let existing = [];
     try{
-      const raw=await storageGet(STORAGE_KEY);
-      if(raw){ const d=JSON.parse(raw); if(d&&Array.isArray(d.questions)) existingQuestions=d.questions; }
+      const doc = await db.collection('bank').doc('questions').get();
+      if(doc.exists && Array.isArray(doc.data().questions)) existing = doc.data().questions;
     }catch(e){}
 
-    // Merge: keep existing, add new ones not already present (dedupe by question text)
-    const existingKeys=new Set(existingQuestions.map(q=>q.text.slice(0,80).toLowerCase()));
-    const brandNew=BANK.filter(q=>!existingKeys.has(q.text.slice(0,80).toLowerCase()));
-    const merged=[...existingQuestions, ...brandNew];
+    const merged = mergeQuestions(existing, BANK);
+    const payload = buildPayload(merged, existing.length === 0 ? [] : (await getUploadLog_fb()));
 
-    const topics=[...new Set(merged.map(q=>q.category))].sort();
-    const payload=JSON.stringify({
-      questions:merged,
-      publishedAt:new Date().toISOString(),
-      questionCount:merged.length,
-      topics,
-      uploads:(await getUploadLog()).concat([{
-        file:'Upload '+(new Date().toLocaleString()),
-        added:brandNew.length,
-        total:merged.length
-      }])
-    });
-    await storageSet(STORAGE_KEY, payload);
+    // Firestore has a 1MB doc limit — chunk if needed
+    if(JSON.stringify(payload).length > 900000){
+      setSyncBar('err','Bank too large for one Firestore doc. Split your upload into smaller files.');
+      pb.disabled = false; return;
+    }
 
-    // Update in-memory bank to full merged set
-    BANK=merged;
-    const addedMsg=brandNew.length>0?` (+${brandNew.length} new)`:' (no new questions — already stored)';
-    setSyncBar('ok',`✓ Bank now has ${merged.length} questions · ${topics.length} topics${addedMsg}`);
-    document.getElementById('btn-publish').textContent='✓ Published';
-    populateTopics(); updateStatus();
-    showActiveCard({questions:merged,topics});
+    await db.collection('bank').doc('questions').set(payload);
+    BANK = merged;
+    const added = merged.length - existing.length;
+    setSyncBar('ok', `✓ Published to Firebase — ${merged.length} questions · ${topicCount()} topics · +${added} new`);
+    pb.textContent = '✓ Published to all devices';
+    populateTopics(); updateStatus(); showActiveCard(payload);
   } catch(e){
-    setSyncBar('err','Publish failed: '+e.message+' — try refreshing the page.');
-    document.getElementById('btn-publish').disabled=false;
+    setSyncBar('err','Publish failed: '+e.message);
+    pb.disabled = false;
   }
 }
 
-async function getUploadLog(){
+async function mergeWithStored_local(newQs){
   try{
-    const raw=await storageGet(STORAGE_KEY);
-    if(raw){ const d=JSON.parse(raw); return Array.isArray(d.uploads)?d.uploads:[]; }
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(raw){ const d=JSON.parse(raw); if(Array.isArray(d.questions)) return mergeQuestions(d.questions, newQs); }
+  }catch(e){}
+  return newQs;
+}
+
+function mergeQuestions(existing, incoming){
+  const keys = new Set(existing.map(q => q.text.slice(0,80).toLowerCase()));
+  const brandNew = incoming.filter(q => !keys.has(q.text.slice(0,80).toLowerCase()));
+  return [...existing, ...brandNew];
+}
+
+function buildPayload(questions, prevUploads){
+  const uploads = (prevUploads||[]).concat([{
+    ts: new Date().toLocaleString(),
+    added: questions.length - ((prevUploads||[]).reduce((a,u)=>a,0)),
+    total: questions.length
+  }]);
+  return {
+    questions,
+    publishedAt: new Date().toISOString(),
+    questionCount: questions.length,
+    topics: [...new Set(questions.map(q=>q.category))].sort(),
+    uploads
+  };
+}
+
+async function getUploadLog_fb(){
+  try{
+    const doc = await db.collection('bank').doc('questions').get();
+    if(doc.exists && Array.isArray(doc.data().uploads)) return doc.data().uploads;
   }catch(e){}
   return [];
 }
 
 async function clearBank(){
-  if(!confirm('This will delete ALL stored questions for everyone. Are you sure?')) return;
+  if(!confirm('Delete ALL stored questions for everyone. Are you sure?')) return;
+  const fbReady = await ensureFirebase();
   try{
-    if(useSharedStorage) await window.storage.delete(STORAGE_KEY,true);
-    else localStorage.removeItem(STORAGE_KEY);
+    if(fbReady) await db.collection('bank').doc('questions').delete();
+    localStorage.removeItem(STORAGE_KEY);
     BANK=[];
     populateTopics(); updateStatus();
     document.getElementById('card-active').style.display='none';
-    setSyncBar('ok','Bank cleared — all questions removed.');
+    setSyncBar('ok','Bank cleared.');
   }catch(e){ setSyncBar('err','Clear failed: '+e.message); }
 }
 
@@ -468,16 +592,16 @@ function showActiveCard(d){
   const qs=d.questions||BANK;
   const topics=d.topics||[...new Set(qs.map(q=>q.category))].sort();
   const uploads=Array.isArray(d.uploads)?d.uploads:[];
-  const storageLabel=useSharedStorage?'Shared (all devices)':'Local (this device only)';
+  const storageLabel = db ? '🔥 Firebase (all devices)' : '💾 Local only';
   document.getElementById('card-active').style.display='block';
   document.getElementById('active-info').innerHTML=
-    `<strong style="color:var(--white)">${qs.length} questions</strong> · ${topics.length} topics`+
-    `<span style="margin-left:10px;font-size:11px;color:var(--slate-dim)">📦 ${storageLabel}</span><br>`+
+    `<strong style="color:var(--white)">${qs.length} questions</strong> · ${topics.length} topics `+
+    `<span style="font-size:11px;color:var(--slate-dim);margin-left:6px">${storageLabel}</span><br>`+
     topics.map(t=>`<span class="chip" style="display:inline-block;margin:3px 3px 0 0">${t} (${qs.filter(q=>q.category===t).length})</span>`).join('')+
     (uploads.length>0
       ? `<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">`+
         `<div style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--slate);margin-bottom:6px">Upload History</div>`+
-        uploads.slice().reverse().slice(0,5).map(u=>`<div style="font-size:11px;color:var(--slate);margin-bottom:3px">📤 ${u.file} — <span style="color:var(--teal)">+${u.added} added</span> · ${u.total} total</div>`).join('')+
+        uploads.slice().reverse().slice(0,5).map(u=>`<div style="font-size:11px;color:var(--slate);margin-bottom:3px">📤 ${u.ts||u.file||'Upload'} · ${u.total} total</div>`).join('')+
         `</div>`
       : '')+
     `<button class="btn" onclick="clearBank()" style="margin-top:12px;background:rgba(224,64,64,.1);border:1px solid rgba(224,64,64,.2);color:var(--red);font-size:11px;padding:5px 12px;border-radius:7px">🗑 Clear Entire Bank</button>`;
@@ -814,12 +938,13 @@ function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random
 // ══ INIT ════════════════════════════════════════════════════
 (async()=>{
   updateStatus();
-  await loadFromStorage();
-  if(!useSharedStorage){
-    // Show a note in admin that we're using local storage
-    const bar=document.getElementById('sync-bar');
-    if(bar && BANK.length===0) setSyncBar('ok','Using local browser storage (localStorage). Questions saved here only.');
+  // Pre-fill Firebase config textarea if saved
+  const saved = localStorage.getItem(FB_CONFIG_KEY);
+  if(saved){
+    const el = document.getElementById('fb-config-input');
+    if(el) el.value = saved;
   }
+  await loadFromStorage();
 })();
 </script>
 </body>
