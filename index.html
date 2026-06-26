@@ -730,7 +730,7 @@ function populateTopics(){
   sel.innerHTML='<option value="all">All Topics (Mixed)</option>';
   [...new Set(BANK.map(q=>q.category))].sort().forEach(t=>{
     const o=document.createElement('option');
-    o.value=t; o.textContent=`${t} (${BANK.filter(q=>q.category===t).length})`;
+    o.value=t; o.textContent=t;
     sel.appendChild(o);
   });
 }
@@ -741,12 +741,12 @@ function updateStatus(){
   const badge=document.getElementById('reg-badge');
   if(BANK.length>0){
     dot.className='status-dot live';
-    txt.textContent=`${BANK.length} questions · ${topicCount()} topics`;
+    txt.textContent='Ready';
     badge.className='reg-badge rb-ok';
-    badge.textContent=`✓ ${BANK.length} questions · ${topicCount()} topics`;
+    badge.textContent='✓ Questions available';
   } else {
     dot.className='status-dot';
-    txt.textContent='No bank loaded';
+    txt.textContent='Loading…';
     badge.className='reg-badge rb-warn';
     badge.textContent='⚠ No question bank available';
   }
