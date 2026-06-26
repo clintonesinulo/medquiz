@@ -265,11 +265,25 @@ header{width:100%;background:rgba(7,18,31,.95);border-bottom:1px solid var(--bor
   </div>
 </div>
 
+<!-- ══ EXIT CONFIRM OVERLAY ══ -->
+<div class="overlay" id="exit-overlay">
+  <div class="ov-card" style="max-width:380px;text-align:center">
+    <div style="font-size:28px;margin-bottom:12px">⚠️</div>
+    <div style="font-size:17px;font-weight:600;margin-bottom:8px">Exit Quiz?</div>
+    <div style="font-size:13px;color:var(--slate);margin-bottom:22px;line-height:1.6">Your progress will be lost.<br>You'll return to the home screen.</div>
+    <div style="display:flex;gap:10px">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeExitDialog()">Keep Going</button>
+      <button class="btn" style="flex:1;background:var(--red);color:#fff" onclick="confirmExit()">Exit Quiz</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══ QUIZ ══ -->
 <div class="screen" id="screen-quiz">
   <div class="quiz-hdr">
     <div class="q-num" id="q-num">Q 1 of 10</div>
     <div class="prog-track"><div class="prog-fill" id="prog-fill" style="width:0%"></div></div>
+    <button class="btn" onclick="openExitDialog()" style="background:rgba(224,64,64,.12);border:1px solid rgba(224,64,64,.25);color:var(--red);font-size:11px;padding:5px 11px;border-radius:7px;white-space:nowrap;flex-shrink:0">✕ Exit</button>
   </div>
   <div class="timer-wrap">
     <div class="t-ring">
@@ -337,45 +351,109 @@ let timeLeft=60, timerInterval=null, results=[];
 const CIRC=201.1;
 const STORAGE_KEY='medquiz_bank_v3';
 
-// ══ SHARED STORAGE ══════════════════════════════════════════
+// ══ STORAGE LAYER ═══════════════════════════════════════════
+// Tries window.storage (artifact env) first, falls back to localStorage.
+const useSharedStorage = typeof window.storage !== 'undefined' && window.storage !== null;
+
+async function storageGet(key){
+  if(useSharedStorage){
+    try{ const r=await window.storage.get(key,true); return r?r.value:null; }catch(e){ return null; }
+  } else {
+    return localStorage.getItem(key);
+  }
+}
+async function storageSet(key,value){
+  if(useSharedStorage){
+    await window.storage.set(key,value,true);
+  } else {
+    localStorage.setItem(key,value);
+  }
+}
+
+// ══ CUMULATIVE BANK STORAGE ══════════════════════════════════
+// Each publish MERGES new questions into the stored bank.
+// Deduplication is by question text (first 80 chars).
+
 async function loadFromStorage(){
   setSyncBar('sync','Checking for published bank…');
   try {
-    const r = await window.storage.get(STORAGE_KEY, true);
-    if(r && r.value){
-      const d=JSON.parse(r.value);
+    const raw = await storageGet(STORAGE_KEY);
+    if(raw){
+      const d=JSON.parse(raw);
       if(d && Array.isArray(d.questions) && d.questions.length>0){
         BANK=d.questions;
-        populateTopics();
-        updateStatus();
+        populateTopics(); updateStatus();
         setSyncBar('ok',`✓ ${BANK.length} questions loaded · ${topicCount()} topics`);
-        showActiveCard(d);
-        return;
+        showActiveCard(d); return;
       }
     }
     setSyncBar('ok','No published bank yet — upload and publish above');
     updateStatus();
-  } catch(e){ setSyncBar('ok','Bank check complete'); updateStatus(); }
+  } catch(e){ setSyncBar('ok','Ready — no bank published yet'); updateStatus(); }
 }
 
 async function publishBank(){
   if(!BANK.length) return;
-  setSyncBar('sync','Publishing to all devices…');
+  setSyncBar('sync','Publishing…');
   document.getElementById('btn-publish').disabled=true;
   try {
-    const topics=[...new Set(BANK.map(q=>q.category))].sort();
-    await window.storage.set(STORAGE_KEY, JSON.stringify({
-      questions:BANK, publishedAt:new Date().toISOString(),
-      questionCount:BANK.length, topics
-    }), true);
-    setSyncBar('ok',`✓ Published — ${BANK.length} questions live on all devices`);
+    // Load whatever is already stored
+    let existingQuestions=[];
+    try{
+      const raw=await storageGet(STORAGE_KEY);
+      if(raw){ const d=JSON.parse(raw); if(d&&Array.isArray(d.questions)) existingQuestions=d.questions; }
+    }catch(e){}
+
+    // Merge: keep existing, add new ones not already present (dedupe by question text)
+    const existingKeys=new Set(existingQuestions.map(q=>q.text.slice(0,80).toLowerCase()));
+    const brandNew=BANK.filter(q=>!existingKeys.has(q.text.slice(0,80).toLowerCase()));
+    const merged=[...existingQuestions, ...brandNew];
+
+    const topics=[...new Set(merged.map(q=>q.category))].sort();
+    const payload=JSON.stringify({
+      questions:merged,
+      publishedAt:new Date().toISOString(),
+      questionCount:merged.length,
+      topics,
+      uploads:(await getUploadLog()).concat([{
+        file:'Upload '+(new Date().toLocaleString()),
+        added:brandNew.length,
+        total:merged.length
+      }])
+    });
+    await storageSet(STORAGE_KEY, payload);
+
+    // Update in-memory bank to full merged set
+    BANK=merged;
+    const addedMsg=brandNew.length>0?` (+${brandNew.length} new)`:' (no new questions — already stored)';
+    setSyncBar('ok',`✓ Bank now has ${merged.length} questions · ${topics.length} topics${addedMsg}`);
     document.getElementById('btn-publish').textContent='✓ Published';
     populateTopics(); updateStatus();
-    showActiveCard({questions:BANK, topics});
+    showActiveCard({questions:merged,topics});
   } catch(e){
-    setSyncBar('err','Publish failed: '+e.message);
+    setSyncBar('err','Publish failed: '+e.message+' — try refreshing the page.');
     document.getElementById('btn-publish').disabled=false;
   }
+}
+
+async function getUploadLog(){
+  try{
+    const raw=await storageGet(STORAGE_KEY);
+    if(raw){ const d=JSON.parse(raw); return Array.isArray(d.uploads)?d.uploads:[]; }
+  }catch(e){}
+  return [];
+}
+
+async function clearBank(){
+  if(!confirm('This will delete ALL stored questions for everyone. Are you sure?')) return;
+  try{
+    if(useSharedStorage) await window.storage.delete(STORAGE_KEY,true);
+    else localStorage.removeItem(STORAGE_KEY);
+    BANK=[];
+    populateTopics(); updateStatus();
+    document.getElementById('card-active').style.display='none';
+    setSyncBar('ok','Bank cleared — all questions removed.');
+  }catch(e){ setSyncBar('err','Clear failed: '+e.message); }
 }
 
 function setSyncBar(type,msg){
@@ -387,11 +465,22 @@ function setSyncBar(type,msg){
 }
 
 function showActiveCard(d){
-  const topics=d.topics||[...new Set((d.questions||BANK).map(q=>q.category))].sort();
+  const qs=d.questions||BANK;
+  const topics=d.topics||[...new Set(qs.map(q=>q.category))].sort();
+  const uploads=Array.isArray(d.uploads)?d.uploads:[];
+  const storageLabel=useSharedStorage?'Shared (all devices)':'Local (this device only)';
   document.getElementById('card-active').style.display='block';
   document.getElementById('active-info').innerHTML=
-    `<strong style="color:var(--white)">${(d.questions||BANK).length} questions</strong> · ${topics.length} topics<br>`+
-    topics.map(t=>`<span class="chip" style="display:inline-block;margin:3px 3px 0 0">${t}</span>`).join('');
+    `<strong style="color:var(--white)">${qs.length} questions</strong> · ${topics.length} topics`+
+    `<span style="margin-left:10px;font-size:11px;color:var(--slate-dim)">📦 ${storageLabel}</span><br>`+
+    topics.map(t=>`<span class="chip" style="display:inline-block;margin:3px 3px 0 0">${t} (${qs.filter(q=>q.category===t).length})</span>`).join('')+
+    (uploads.length>0
+      ? `<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">`+
+        `<div style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--slate);margin-bottom:6px">Upload History</div>`+
+        uploads.slice().reverse().slice(0,5).map(u=>`<div style="font-size:11px;color:var(--slate);margin-bottom:3px">📤 ${u.file} — <span style="color:var(--teal)">+${u.added} added</span> · ${u.total} total</div>`).join('')+
+        `</div>`
+      : '')+
+    `<button class="btn" onclick="clearBank()" style="margin-top:12px;background:rgba(224,64,64,.1);border:1px solid rgba(224,64,64,.2);color:var(--red);font-size:11px;padding:5px 12px;border-radius:7px">🗑 Clear Entire Bank</button>`;
 }
 
 // ══ UNIVERSAL PARSER ═══════════════════════════════════════
@@ -528,7 +617,7 @@ function checkAdmin(){
 function openAdmin(){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.getElementById('admin-wrap').classList.add('active');
-  if(window.storage) loadFromStorage();
+  loadFromStorage();
   window.scrollTo(0,0);
 }
 function exitAdmin(){
@@ -701,6 +790,22 @@ function showResults(){
   showScreen('screen-results');
 }
 
+// ══ EXIT QUIZ ═══════════════════════════════════════════════
+function openExitDialog(){
+  clearInterval(timerInterval); // pause timer
+  document.getElementById('exit-overlay').classList.add('show');
+}
+function closeExitDialog(){
+  document.getElementById('exit-overlay').classList.remove('show');
+  // resume timer
+  if(!answered) timerInterval=setInterval(tick,1000);
+}
+function confirmExit(){
+  document.getElementById('exit-overlay').classList.remove('show');
+  clearInterval(timerInterval);
+  showScreen('screen-reg');
+}
+
 // ══ UTILS ═══════════════════════════════════════════════════
 function restartQuiz(){showScreen('screen-reg');}
 function showScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active');window.scrollTo(0,0);}
@@ -709,8 +814,12 @@ function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random
 // ══ INIT ════════════════════════════════════════════════════
 (async()=>{
   updateStatus();
-  if(window.storage){ await loadFromStorage(); }
-  else { document.getElementById('reg-badge').textContent='Open as hosted app for bank sync'; }
+  await loadFromStorage();
+  if(!useSharedStorage){
+    // Show a note in admin that we're using local storage
+    const bar=document.getElementById('sync-bar');
+    if(bar && BANK.length===0) setSyncBar('ok','Using local browser storage (localStorage). Questions saved here only.');
+  }
 })();
 </script>
 </body>
