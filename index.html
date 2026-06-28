@@ -155,6 +155,9 @@ header{width:100%;background:rgba(255,255,255,.97);border-bottom:1px solid rgba(
 .ric-ok{background:#007A3D;color:#F0F4FF}.ric-ng{background:#D00000;color:#fff}.ric-to{background:#E07000;color:#F0F4FF}
 .rev-q{font-size:12px;color:#111827;line-height:1.45;flex:1}
 .rev-a{font-size:11px;color:#374151;margin-top:4px;line-height:1.5}
+.rev-exp-toggle{background:none;border:none;color:#0066FF;font-family:'DM Sans',sans-serif;font-weight:700;font-size:11px;padding:6px 0 0;cursor:pointer;display:block}
+.rev-exp{font-size:11.5px;color:#374151;line-height:1.7;background:#F0F4FF;border-left:3px solid #0066FF;padding:10px 12px;border-radius:0 8px 8px 0;margin-top:7px;white-space:pre-wrap;word-break:break-word;display:none}
+.rev-exp.show{display:block}
 .ra-c{color:#007A3D}.ra-w{color:#D00000}
 
 @media(max-width:500px){.form-grid{grid-template-columns:1fr}.stats-grid{grid-template-columns:1fr 1fr}.q-stem{font-size:16px}}
@@ -846,6 +849,7 @@ function updateStatus(){
 // ══ QUIZ ════════════════════════════════════════════════════
 function loadQuestion(){
   answered=false; timeLeft=60;
+  reviewingQuestion=false; document.getElementById('btn-back-to-exp').style.display='none';
   document.getElementById('timeout-msg').textContent='';
   const q=SESSION[curIdx], total=SESSION.length;
   document.getElementById('q-num').textContent=`Q ${curIdx+1} of ${total}`;
@@ -924,8 +928,28 @@ function showExplanation(userAns){
 }
 function nextQ(){document.getElementById('overlay').classList.remove('show');curIdx++;loadQuestion();}
 
+// ══ REVIEW QUESTION (from the explanation screen) ══════════════
+// Lets the student peek back at the question + their selected/correct options while
+// the explanation overlay is open. This is NOT a new question and nothing about quiz
+// state changes — curIdx, score, results, and the timer (already stopped, since the
+// question has been answered) are all completely untouched. It simply hides the
+// explanation overlay temporarily so the already-rendered question card underneath
+// becomes visible again, then a floating button brings the same explanation overlay
+// straight back up exactly as it was.
+function reviewQuestion(){
+  reviewingQuestion = true;
+  document.getElementById('overlay').classList.remove('show');
+  document.getElementById('btn-back-to-exp').style.display = 'block';
+}
+function backToExplanation(){
+  reviewingQuestion = false;
+  document.getElementById('btn-back-to-exp').style.display = 'none';
+  document.getElementById('overlay').classList.add('show');
+}
+
 // ══ RESULTS ════════════════════════════════════════════════
 function showResults(){
+  reviewingQuestion=false; document.getElementById('btn-back-to-exp').style.display='none';
   document.getElementById('overlay').classList.remove('show');
   const total=SESSION.length, pct=Math.round((score/total)*100);
   const wrong=results.filter(r=>!r.correct&&!r.timedOut).length;
@@ -951,9 +975,15 @@ function showResults(){
     else ans=`<span class="ra-w">Your answer: ${L[r.userAns]}. ${r.q.options[r.userAns]}</span><br><span class="ra-c">Correct: ${L[r.q.correct]}. ${r.q.options[r.q.correct]}</span>`;
     const ic=r.timedOut?'ric-to':r.correct?'ric-ok':'ric-ng';
     const sym=r.timedOut?'⏱':r.correct?'✓':'✗';
-    rl.innerHTML+=`<div class="rev-item"><div class="rev-top"><div class="rev-ic ${ic}">${sym}</div><div class="rev-q"><strong>Q${idx+1}.</strong> ${r.q.text}</div></div><div class="rev-a">${ans}</div></div>`;
+    rl.innerHTML+=`<div class="rev-item"><div class="rev-top"><div class="rev-ic ${ic}">${sym}</div><div class="rev-q"><strong>Q${idx+1}.</strong> ${r.q.text}</div></div><div class="rev-a">${ans}</div><button class="rev-exp-toggle" onclick="toggleRevExp(${idx})">Show explanation ▾</button><div class="rev-exp" id="rev-exp-${idx}">${r.q.explanation}</div></div>`;
   });
   showScreen('screen-results');
+}
+function toggleRevExp(idx){
+  const el=document.getElementById('rev-exp-'+idx);
+  const btn=el.previousElementSibling;
+  const open=el.classList.toggle('show');
+  btn.textContent = open ? 'Hide explanation ▴' : 'Show explanation ▾';
 }
 
 // ══ EXIT QUIZ ═══════════════════════════════════════════════
@@ -968,6 +998,7 @@ function closeExitDialog(){
 }
 function confirmExit(){
   document.getElementById('exit-overlay').classList.remove('show');
+  reviewingQuestion=false; document.getElementById('btn-back-to-exp').style.display='none';
   clearInterval(timerInterval);
   showScreen('screen-reg');
 }
