@@ -332,18 +332,28 @@ header{width:100%;background:rgba(255,255,255,.97);border-bottom:1px solid rgba(
     <div class="ov-pill" id="ov-pill"></div>
     <div class="ov-ans" id="ov-ans"></div>
     <div class="ov-exp" id="ov-exp"></div>
+    <button class="btn btn-ghost" id="btn-review" onclick="reviewQuestion()" style="margin-bottom:8px;width:100%">👁 Review Question</button>
     <button class="btn-cont" id="btn-cont">Next Question →</button>
   </div>
 </div>
 
+<!-- Floating return button shown only while peeking at the question from the explanation screen.
+     Clicking it just re-opens the (already fully-built) explanation overlay — it is NOT a new
+     question, nothing about quiz state (curIdx/score/timer) changes while reviewing. -->
+<button class="btn-cont" id="btn-back-to-exp" onclick="backToExplanation()"
+  style="position:fixed;left:16px;right:16px;bottom:16px;max-width:560px;margin:0 auto;display:none;z-index:150;box-shadow:0 6px 20px rgba(0,0,0,.25)">
+  📖 Back to Explanation
+</button>
+
 <script>
 // ══ STATE ══════════════════════════════════════════════════
 let BANK=[], SESSION=[], participant={};
-let USED_KEYS = new Set(); // tracks questions seen this topic/count context
 let curIdx=0, score=0, answered=false;
 let timeLeft=60, timerInterval=null, results=[];
+let reviewingQuestion=false; // true while peeking back at the question from the explanation screen
 const CIRC=201.1;
 const STORAGE_KEY='medquiz_bank_v3';
+const DECK_KEY='medquiz_decks_v1'; // per-device, persistent "no repeat until exhausted" decks
 
 // ══ FIREBASE — hardcoded, auto-connects on every device ══════
 let db = null;
@@ -703,6 +713,74 @@ function exitAdmin(){
   showScreen('screen-reg');
 }
 
+// ══ STRICT "NO REPEAT UNTIL EXHAUSTED" QUESTION DECK ═══════════
+// Persistent per-device shuffled deck per topic. Every question in the pool is served
+// exactly once per full lap before any repeat can occur, even across page reloads, new
+// tabs, or brand-new sessions on the same device/browser — state lives in localStorage,
+// not in memory. The deck only resets automatically if the underlying question pool for
+// that topic actually changes (new bank uploaded/synced), detected via a content signature.
+
+function questionKey(q){ return q.category + '||' + q.text; }
+
+function poolSignature(pool){
+  // Order-independent signature so re-shuffled/re-fetched banks with identical content
+  // don't falsely look "changed".
+  const keys = pool.map(questionKey).sort();
+  const str = keys.join('\u0001');
+  let hash = 0;
+  for(let i=0;i<str.length;i++){ hash = ((hash<<5)-hash+str.charCodeAt(i))|0; }
+  return hash + ':' + keys.length;
+}
+
+function loadDecks(){
+  try{ const raw=localStorage.getItem(DECK_KEY); return raw ? (JSON.parse(raw)||{}) : {}; }
+  catch(e){ return {}; }
+}
+function saveDecks(decks){
+  try{ localStorage.setItem(DECK_KEY, JSON.stringify(decks)); }catch(e){}
+}
+function freshShuffledOrder(pool){
+  const keys = pool.map(questionKey);
+  shuffle(keys);
+  return keys;
+}
+
+// Draws `desired` questions from `pool` under the strict no-repeat rule, persisting
+// progress to localStorage so it survives indefinitely on this device.
+function drawStrictNoRepeat(pool, desired, contextKey){
+  if(!pool.length || desired<=0) return [];
+  const decks = loadDecks();
+  const sig = poolSignature(pool);
+  let deck = decks[contextKey];
+  if(!deck || deck.sig !== sig || !Array.isArray(deck.order)){
+    // First time for this topic, OR the bank content for this topic has changed —
+    // start a brand new full lap (this is the ONLY situation that resets progress).
+    deck = { sig, order: freshShuffledOrder(pool) };
+  }
+
+  const byKey = new Map(pool.map(q => [questionKey(q), q]));
+  const drawnKeys = [];
+  const safetyCap = desired + pool.length * 4 + 20; // generous guard against any edge-case loop
+  let guard = 0;
+
+  while(drawnKeys.length < desired && guard < safetyCap){
+    guard++;
+    if(deck.order.length === 0){
+      // Lap complete — every question in the pool has now been shown at least once.
+      // Start a brand new shuffled lap and keep drawing seamlessly (matters when a
+      // single quiz request count straddles the boundary between two laps).
+      deck.order = freshShuffledOrder(pool);
+      if(deck.order.length === 0) break; // empty pool guard
+    }
+    const nextKey = deck.order.shift();
+    if(byKey.has(nextKey)) drawnKeys.push(nextKey);
+  }
+
+  decks[contextKey] = deck;
+  saveDecks(decks);
+  return drawnKeys.map(k => byKey.get(k)).filter(Boolean);
+}
+
 // ══ REGISTRATION ════════════════════════════════════════════
 function startQuiz(){
   const fname=document.getElementById('reg-fname').value.trim();
@@ -719,29 +797,18 @@ function startQuiz(){
   let pool=topic==='all'?[...BANK]:BANK.filter(q=>q.category===topic);
   if(!pool.length){showErr(errEl,'No questions for that topic. Try All Topics.');return;}
 
-  const sessionKey = topic + '|' + level;
-  const desired = countVal==='all' ? pool.length : parseInt(countVal);
+  // The question POOL is determined solely by topic (level never filters the bank),
+  // so the no-repeat deck is keyed by topic only — switching "level" must NOT appear
+  // to reset or duplicate progress through the same pool.
+  const contextKey = 'deck|' + topic;
+  const desired = countVal==='all' ? pool.length : Math.min(parseInt(countVal), pool.length);
 
-  // Build unseen pool first — questions not yet seen in this context
-  let unseenPool = pool.filter(q => !USED_KEYS.has(sessionKey + '|' + q.text.slice(0,40)));
-
-  // If unseen pool has fewer than desired, supplement from seen questions
-  // (i.e. wrap around — reuse only what's needed to fill the count)
-  if(unseenPool.length < desired){
-    // Reset used keys for this context and start fresh
-    const contextKeys = [...USED_KEYS].filter(k => k.startsWith(sessionKey));
-    contextKeys.forEach(k => USED_KEYS.delete(k));
-    unseenPool = [...pool]; // full reset
-  }
-
-  // Strict Fisher-Yates shuffle of the unseen pool
-  shuffle(unseenPool);
-
-  const count = Math.min(desired, unseenPool.length);
-  SESSION = unseenPool.slice(0, count);
-
-  // Mark these questions as used
-  SESSION.forEach(q => USED_KEYS.add(sessionKey + '|' + q.text.slice(0,40)));
+  // STRICT no-repeat draw: pulls from a persistent, per-device shuffled deck of this
+  // pool (saved in localStorage). No question can repeat until every other question
+  // in the pool has already been shown at least once; once the deck is fully drained,
+  // a brand-new shuffled lap begins automatically and the cycle continues indefinitely
+  // — across reloads, new tabs, and new sessions on this device.
+  SESSION = drawStrictNoRepeat(pool, desired, contextKey);
 
   participant={name:fname+' '+lname,level};
   curIdx=0;score=0;results=[];
