@@ -161,6 +161,29 @@ header{width:100%;background:rgba(255,255,255,.97);border-bottom:1px solid rgba(
 .ra-c{color:#007A3D}.ra-w{color:#D00000}
 
 @media(max-width:500px){.form-grid{grid-template-columns:1fr}.stats-grid{grid-template-columns:1fr 1fr}.q-stem{font-size:16px}}
+/* ── GROUP SYSTEM ── */
+.group-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:4px}
+.group-card{background:#F9FAFB;border:1px solid rgba(17,24,39,.13);border-radius:10px;padding:10px 8px;cursor:pointer;text-align:center;transition:all .18s;position:relative}
+.group-card:hover{border-color:#0066FF;background:#EFF6FF}
+.group-card.active{background:#EFF6FF;border-color:#0066FF;box-shadow:0 0 0 2px rgba(0,102,255,.15)}
+.group-card .gc-name{font-size:14px;font-weight:700;color:#111827;margin-bottom:2px}
+.group-card .gc-count{font-size:10px;color:#6B7280}
+.group-card .gc-badge{position:absolute;top:5px;right:6px;font-size:9px;background:#D1FAE5;color:#007A3D;padding:1px 5px;border-radius:8px;font-weight:700}
+.admin-group-card{background:#FFFFFF;border:1px solid rgba(17,24,39,.13);border-radius:12px;padding:16px;margin-bottom:10px}
+.agc-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.agc-title{font-size:13px;font-weight:700;color:#111827}
+.agc-meta{font-size:11px;color:#6B7280}
+.agc-actions{display:flex;gap:8px;align-items:center}
+.btn-reupload{background:#EFF6FF;border:1px solid rgba(0,102,255,.25);color:#0052CC;font-family:'DM Sans',sans-serif;font-weight:600;font-size:11px;padding:5px 11px;border-radius:7px;cursor:pointer;transition:all .18s;white-space:nowrap}
+.btn-reupload:hover{background:#DBEAFE}
+.btn-delete-group{background:#FEE2E2;border:1px solid rgba(208,0,0,.2);color:#D00000;font-family:'DM Sans',sans-serif;font-weight:600;font-size:11px;padding:5px 9px;border-radius:7px;cursor:pointer}
+.agc-topics{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+.upload-group-row{display:flex;gap:10px;align-items:flex-end;margin-bottom:10px}
+.upload-group-row .form-row{flex:1;margin-bottom:0}
+.group-select-note{font-size:11px;color:#6B7280;margin-top:6px}
+input[type=file].hidden-file{display:none}
+@media(max-width:500px){.group-grid{grid-template-columns:repeat(3,1fr)}}
+
 </style>
 </head>
 <body>
@@ -180,10 +203,20 @@ header{width:100%;background:rgba(255,255,255,.97);border-bottom:1px solid rgba(
 <div class="admin-wrap" id="admin-wrap">
   <div id="sync-bar"></div>
 
-    <!-- Upload -->
+  <!-- Upload new group file -->
   <div class="card">
     <div class="card-title">📂 Upload Question Bank</div>
-    <div class="upload-zone" id="uz">
+
+    <!-- Group label input -->
+    <div class="upload-group-row">
+      <div class="form-row">
+        <label>Programme / Group Label</label>
+        <input type="text" id="group-name-input" placeholder="e.g. M2, S1, Pathology, Physiology…" style="text-transform:uppercase">
+      </div>
+    </div>
+    <div class="group-select-note">Type the group this file belongs to (M1, M2, M3, M4, S1, S2, S3, S4, Pathology, etc.). Each group is stored and managed separately.</div>
+
+    <div class="upload-zone" id="uz" style="margin-top:12px">
       <input type="file" id="file-input" accept=".docx" onchange="handleFile(this.files[0])">
       <div class="uz-icon">📄</div>
       <div class="uz-label"><strong>Drop your .docx file here</strong><br>or click to browse</div>
@@ -191,7 +224,7 @@ header{width:100%;background:rgba(255,255,255,.97);border-bottom:1px solid rgba(
     <div class="format-box">
       <strong style="color:#111827;display:block;margin-bottom:6px">Required format — every question block:</strong>
       <code>TOPIC:</code> Cardiology<br>
-      <code>Q:</code> Which of the following is true of palpitation?<br>
+      <code>Q:</code> Question text here?<br>
       <code>A.</code> Option one &nbsp;&nbsp;<code>B.</code> Option two &nbsp;&nbsp;<code>C.</code> Option three<br>
       <code>D.</code> Option four &nbsp;&nbsp;<code>E.</code> Option five<br>
       <code>ANSWER:</code> C<br>
@@ -200,15 +233,19 @@ header{width:100%;background:rgba(255,255,255,.97);border-bottom:1px solid rgba(
     </div>
     <div id="parse-status" class="status"></div>
     <div class="chips" id="topic-chips"></div>
-    <button class="btn btn-teal" id="btn-publish" onclick="publishBank()" style="display:none;margin-top:14px">
-      ☁ Publish to All Devices
+    <button class="btn btn-teal" id="btn-publish" onclick="publishGroup()" style="display:none;margin-top:14px">
+      ☁ Publish Group to All Devices
     </button>
   </div>
 
-  <div class="card" id="card-active" style="display:none">
-    <div class="card-title">✓ Currently Active Bank</div>
-    <div id="active-info" style="font-size:13px;color:#374151;line-height:1.7"></div>
+  <!-- Existing groups -->
+  <div class="card" id="card-groups" style="display:none">
+    <div class="card-title">📚 Published Groups</div>
+    <div id="groups-list"></div>
   </div>
+
+  <!-- Hidden file inputs for re-uploads (created dynamically) -->
+  <div id="reupload-inputs"></div>
 
   <button class="btn btn-ghost" onclick="exitAdmin()" style="margin-top:14px">← Back to Quiz</button>
 </div>
@@ -237,6 +274,12 @@ header{width:100%;background:rgba(255,255,255,.97);border-bottom:1px solid rgba(
         <option value="">Select your level</option>
         <option value="Pre-clinical">Pre-clinical (Year 1–2)</option>
         <option value="Clinical">Clinical (Year 3–6)</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label>Programme / Group</label>
+      <select id="reg-group" onchange="onGroupChange()">
+        <option value="all">All Groups (Mixed)</option>
       </select>
     </div>
     <div class="form-grid">
@@ -404,147 +447,283 @@ async function ensureFirebase(){
   }
 }
 
-// ══ BANK STORAGE (Firebase primary, localStorage fallback) ══
+// ══ GROUP-AWARE BANK STORAGE ════════════════════════════════
+// BANK is a flat array of ALL questions (all groups merged).
+// GROUPS is a map: { groupLabel -> { questions, topics, uploadedAt, questionCount } }
+// Firebase stores each group as a separate doc: bank/group_M2, bank/group_S1, etc.
+// STORAGE_KEY_GROUPS = 'medquiz_groups_v1' (localStorage fallback index)
+
+let PENDING_QUESTIONS = []; // questions parsed from current file, awaiting publish
+let GROUPS = {}; // in-memory: { 'M2': { questions:[...], topics:[...], uploadedAt, questionCount } }
+
+function groupDocId(label){ return 'group_' + label.toUpperCase().replace(/[^A-Z0-9]/g,'_'); }
 
 async function loadFromStorage(){
-  setSyncBar('sync','Loading question bank…');
+  setSyncBar('sync','Loading question banks…');
   const fbReady = await ensureFirebase();
+  GROUPS = {};
 
   if(fbReady){
-    try {
-      const doc = await db.collection('bank').doc('questions').get();
-      if(doc.exists){
-        const d = doc.data();
-        if(d && Array.isArray(d.questions) && d.questions.length > 0){
-          BANK = d.questions;
-          populateTopics(); updateStatus();
-          setSyncBar('ok', `✓ ${BANK.length} questions · ${topicCount()} topics · synced from Firebase`);
-          showActiveCard(d); return;
+    try{
+      // List all group docs by fetching the index doc first, then each group
+      const idxDoc = await db.collection('bank').doc('_index').get();
+      const groupLabels = (idxDoc.exists && Array.isArray(idxDoc.data().groups)) ? idxDoc.data().groups : [];
+
+      if(groupLabels.length === 0){
+        // Backwards compatibility: try old single-doc format
+        const legacyDoc = await db.collection('bank').doc('questions').get();
+        if(legacyDoc.exists && Array.isArray(legacyDoc.data().questions) && legacyDoc.data().questions.length > 0){
+          const d = legacyDoc.data();
+          GROUPS['GENERAL'] = { questions: d.questions, topics: d.topics||[], uploadedAt: d.publishedAt||'', questionCount: d.questions.length };
+        }
+      } else {
+        for(const label of groupLabels){
+          try{
+            const gDoc = await db.collection('bank').doc(groupDocId(label)).get();
+            if(gDoc.exists && Array.isArray(gDoc.data().questions)){
+              const d = gDoc.data();
+              GROUPS[label] = { questions: d.questions, topics: d.topics||[], uploadedAt: d.uploadedAt||'', questionCount: d.questions.length };
+            }
+          }catch(e){}
         }
       }
-      setSyncBar('ok','Firebase connected — no bank published yet. Upload and publish above.');
-      updateStatus(); return;
-    } catch(e){
-      setSyncBar('err','Firebase read failed: '+e.message+' — check Firestore rules.');
+
+      rebuildBANK();
+      populateGroupDropdowns();
+      updateStatus();
+      setSyncBar('ok', `✓ ${Object.keys(GROUPS).length} group${Object.keys(GROUPS).length!==1?'s':''} loaded · ${BANK.length} questions total`);
+      renderAdminGroups();
+      return;
+    }catch(e){
+      setSyncBar('err','Firebase read failed: '+e.message+' — falling back to local.');
     }
   }
 
-  // Fallback: localStorage
-  try {
+  // localStorage fallback
+  try{
     const raw = localStorage.getItem(STORAGE_KEY);
     if(raw){
-      const d = JSON.parse(raw);
-      if(d && Array.isArray(d.questions) && d.questions.length > 0){
-        BANK = d.questions;
-        populateTopics(); updateStatus();
-        setSyncBar('ok', `✓ ${BANK.length} questions loaded (local only — set up Firebase for cross-device sync)`);
-        showActiveCard(d); return;
+      const parsed = JSON.parse(raw);
+      // New grouped format
+      if(parsed.groups){
+        GROUPS = parsed.groups;
+      } else if(Array.isArray(parsed.questions) && parsed.questions.length > 0){
+        // Legacy flat format
+        GROUPS['GENERAL'] = { questions: parsed.questions, topics: parsed.topics||[], uploadedAt: parsed.publishedAt||'', questionCount: parsed.questions.length };
       }
+      rebuildBANK();
+      populateGroupDropdowns();
+      updateStatus();
+      const n = Object.keys(GROUPS).length;
+      setSyncBar('ok', `✓ ${n} group${n!==1?'s':''} loaded (local) · ${BANK.length} questions total`);
+      renderAdminGroups();
+      return;
     }
-  } catch(e){}
+  }catch(e){}
 
-  setSyncBar('ok', 'No bank published yet — upload a question bank above.');
+  setSyncBar('ok','No bank published yet — upload a group above.');
   updateStatus();
 }
 
-async function publishBank(){
-  if(!BANK.length) return;
+function rebuildBANK(){
+  // Flatten all groups into BANK, attaching group label to each question
+  BANK = [];
+  for(const [label, g] of Object.entries(GROUPS)){
+    if(Array.isArray(g.questions)){
+      g.questions.forEach(q => { BANK.push({...q, group: label}); });
+    }
+  }
+}
+
+async function publishGroup(){
+  const rawLabel = document.getElementById('group-name-input').value.trim().toUpperCase();
+  if(!rawLabel){ setSyncBar('err','Enter a group label (e.g. M2) before publishing.'); return; }
+  if(!PENDING_QUESTIONS.length){ setSyncBar('err','Parse a file first, then publish.'); return; }
+
+  const label = rawLabel;
   const pb = document.getElementById('btn-publish');
   pb.disabled = true;
+  setSyncBar('sync',`Publishing group "${label}" to all devices…`);
+
+  const groupData = {
+    questions: PENDING_QUESTIONS,
+    topics: [...new Set(PENDING_QUESTIONS.map(q=>q.category))].sort(),
+    uploadedAt: new Date().toISOString(),
+    questionCount: PENDING_QUESTIONS.length,
+    label
+  };
+
   const fbReady = await ensureFirebase();
 
-  if(!fbReady){
-    // No Firebase — save locally only
-    setSyncBar('sync','Saving locally (no Firebase configured)…');
-    const merged = await mergeWithStored_local(BANK);
-    const payload = buildPayload(merged);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-    BANK = merged;
-    setSyncBar('ok', `✓ Saved locally — ${merged.length} questions (Firebase unavailable, check internet).`);
-    populateTopics(); updateStatus(); showActiveCard(payload);
-    pb.textContent = '✓ Saved locally'; return;
-  }
-
-  setSyncBar('sync','Publishing to Firebase (all devices)…');
-  try {
-    // Load existing from Firestore
-    let existing = [];
+  if(fbReady){
     try{
-      const doc = await db.collection('bank').doc('questions').get();
-      if(doc.exists && Array.isArray(doc.data().questions)) existing = doc.data().questions;
-    }catch(e){}
+      // Write group doc
+      await db.collection('bank').doc(groupDocId(label)).set(groupData);
+      // Update index doc
+      const idxDoc = await db.collection('bank').doc('_index').get();
+      const existing = (idxDoc.exists && Array.isArray(idxDoc.data().groups)) ? idxDoc.data().groups : [];
+      const newList = [...new Set([...existing, label])].sort();
+      await db.collection('bank').doc('_index').set({ groups: newList, updatedAt: new Date().toISOString() });
 
-    const merged = mergeQuestions(existing, BANK);
-    const payload = buildPayload(merged, existing.length === 0 ? [] : (await getUploadLog_fb()));
-
-    // Firestore has a 1MB doc limit — chunk if needed
-    if(JSON.stringify(payload).length > 900000){
-      setSyncBar('err','Bank too large for one Firestore doc. Split your upload into smaller files.');
-      pb.disabled = false; return;
+      GROUPS[label] = groupData;
+      rebuildBANK();
+      populateGroupDropdowns();
+      updateStatus();
+      pb.textContent = '✓ Published';
+      PENDING_QUESTIONS = [];
+      setSyncBar('ok',`✓ Group "${label}" published — ${groupData.questionCount} questions live on all devices.`);
+      document.getElementById('parse-status').className='status'; document.getElementById('parse-status').textContent='';
+      document.getElementById('topic-chips').innerHTML='';
+      pb.style.display='none';
+      document.getElementById('group-name-input').value='';
+      renderAdminGroups();
+    }catch(e){
+      setSyncBar('err','Publish failed: '+e.message);
+      pb.disabled=false;
     }
-
-    await db.collection('bank').doc('questions').set(payload);
-    BANK = merged;
-    const added = merged.length - existing.length;
-    setSyncBar('ok', `✓ Published to Firebase — ${merged.length} questions · ${topicCount()} topics · +${added} new`);
-    pb.textContent = '✓ Published to all devices';
-    populateTopics(); updateStatus(); showActiveCard(payload);
-  } catch(e){
-    setSyncBar('err','Publish failed: '+e.message);
-    pb.disabled = false;
+  } else {
+    // Local fallback
+    GROUPS[label] = groupData;
+    rebuildBANK();
+    const payload = { groups: GROUPS, updatedAt: new Date().toISOString() };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    populateGroupDropdowns();
+    updateStatus();
+    pb.textContent = '✓ Saved locally';
+    PENDING_QUESTIONS = [];
+    setSyncBar('ok',`✓ Group "${label}" saved locally — ${groupData.questionCount} questions. Firebase unavailable.`);
+    document.getElementById('parse-status').className='status'; document.getElementById('parse-status').textContent='';
+    document.getElementById('topic-chips').innerHTML='';
+    pb.style.display='none';
+    document.getElementById('group-name-input').value='';
+    renderAdminGroups();
   }
 }
 
-async function mergeWithStored_local(newQs){
-  try{
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if(raw){ const d=JSON.parse(raw); if(Array.isArray(d.questions)) return mergeQuestions(d.questions, newQs); }
-  }catch(e){}
-  return newQs;
+async function reuploadGroup(label, file){
+  if(!file || !file.name.endsWith('.docx')){ alert('Please select a .docx file.'); return; }
+  setSyncBar('sync',`Re-reading file for group "${label}"…`);
+  const reader = new FileReader();
+  reader.onload = async e => {
+    try{
+      const r = await mammoth.extractRawText({arrayBuffer: e.target.result});
+      const qs = parseStandardFormat(r.value);
+      if(!qs.length){ setSyncBar('err','No questions found in file. Check the format.'); return; }
+
+      const groupData = {
+        questions: qs,
+        topics: [...new Set(qs.map(q=>q.category))].sort(),
+        uploadedAt: new Date().toISOString(),
+        questionCount: qs.length,
+        label
+      };
+
+      setSyncBar('sync',`Publishing updated group "${label}" (${qs.length} questions)…`);
+      const fbReady = await ensureFirebase();
+
+      if(fbReady){
+        await db.collection('bank').doc(groupDocId(label)).set(groupData);
+        const idxDoc = await db.collection('bank').doc('_index').get();
+        const existing = (idxDoc.exists && Array.isArray(idxDoc.data().groups)) ? idxDoc.data().groups : [];
+        const newList = [...new Set([...existing, label])].sort();
+        await db.collection('bank').doc('_index').set({ groups: newList, updatedAt: new Date().toISOString() });
+      } else {
+        GROUPS[label] = groupData;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ groups: GROUPS, updatedAt: new Date().toISOString() }));
+      }
+
+      GROUPS[label] = groupData;
+      rebuildBANK();
+      populateGroupDropdowns();
+      updateStatus();
+      setSyncBar('ok',`✓ Group "${label}" updated — ${qs.length} questions now live.`);
+      renderAdminGroups();
+    }catch(err){ setSyncBar('err','Update failed: '+err.message); }
+  };
+  reader.readAsArrayBuffer(file);
 }
 
+async function deleteGroup(label){
+  if(!confirm(`Delete all questions in group "${label}"? This cannot be undone.`)) return;
+  setSyncBar('sync',`Deleting group "${label}"…`);
+  const fbReady = await ensureFirebase();
+  if(fbReady){
+    try{
+      await db.collection('bank').doc(groupDocId(label)).delete();
+      const idxDoc = await db.collection('bank').doc('_index').get();
+      const existing = (idxDoc.exists && Array.isArray(idxDoc.data().groups)) ? idxDoc.data().groups : [];
+      const newList = existing.filter(l=>l!==label);
+      await db.collection('bank').doc('_index').set({ groups: newList, updatedAt: new Date().toISOString() });
+    }catch(e){ setSyncBar('err','Delete failed: '+e.message); return; }
+  }
+  delete GROUPS[label];
+  const payload = { groups: GROUPS, updatedAt: new Date().toISOString() };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  rebuildBANK();
+  populateGroupDropdowns();
+  updateStatus();
+  setSyncBar('ok',`Group "${label}" deleted.`);
+  renderAdminGroups();
+}
+
+function renderAdminGroups(){
+  const card = document.getElementById('card-groups');
+  const list = document.getElementById('groups-list');
+  const labels = Object.keys(GROUPS).sort();
+  if(!labels.length){ card.style.display='none'; return; }
+  card.style.display='block';
+  list.innerHTML = labels.map(label => {
+    const g = GROUPS[label];
+    const topicChips = (g.topics||[]).map(t=>`<span class="chip" style="display:inline-block;margin:2px 2px 0 0">${t} (${g.questions.filter(q=>q.category===t).length})</span>`).join('');
+    const uploaded = g.uploadedAt ? new Date(g.uploadedAt).toLocaleDateString() : '';
+    return `<div class="admin-group-card">
+      <div class="agc-header">
+        <div>
+          <div class="agc-title">${label}</div>
+          <div class="agc-meta">${g.questionCount||g.questions.length} questions · ${(g.topics||[]).length} topics${uploaded?' · Updated '+uploaded:''}</div>
+        </div>
+        <div class="agc-actions">
+          <label class="btn-reupload" style="cursor:pointer">
+            🔄 Update
+            <input type="file" accept=".docx" class="hidden-file" onchange="reuploadGroup('${label}', this.files[0])">
+          </label>
+          <button class="btn-delete-group" onclick="deleteGroup('${label}')">🗑</button>
+        </div>
+      </div>
+      <div class="agc-topics">${topicChips}</div>
+    </div>`;
+  }).join('');
+}
+
+// ── Old publish/merge helpers kept for backwards compat ──────────────
+async function mergeWithStored_local(newQs){ return newQs; }
 function mergeQuestions(existing, incoming){
   const keys = new Set(existing.map(q => q.text.slice(0,80).toLowerCase()));
   const brandNew = incoming.filter(q => !keys.has(q.text.slice(0,80).toLowerCase()));
   return [...existing, ...brandNew];
 }
-
 function buildPayload(questions, prevUploads){
-  const uploads = (prevUploads||[]).concat([{
-    ts: new Date().toLocaleString(),
-    added: questions.length - ((prevUploads||[]).reduce((a,u)=>a,0)),
-    total: questions.length
-  }]);
-  return {
-    questions,
-    publishedAt: new Date().toISOString(),
-    questionCount: questions.length,
-    topics: [...new Set(questions.map(q=>q.category))].sort(),
-    uploads
-  };
+  const uploads = (prevUploads||[]).concat([{ ts: new Date().toLocaleString(), total: questions.length }]);
+  return { questions, publishedAt: new Date().toISOString(), questionCount: questions.length, topics: [...new Set(questions.map(q=>q.category))].sort(), uploads };
 }
-
-async function getUploadLog_fb(){
-  try{
-    const doc = await db.collection('bank').doc('questions').get();
-    if(doc.exists && Array.isArray(doc.data().uploads)) return doc.data().uploads;
-  }catch(e){}
-  return [];
-}
-
+async function getUploadLog_fb(){ return []; }
 async function clearBank(){
   if(!confirm('Delete ALL stored questions for everyone. Are you sure?')) return;
   const fbReady = await ensureFirebase();
   try{
-    if(fbReady) await db.collection('bank').doc('questions').delete();
+    if(fbReady){
+      const idxDoc = await db.collection('bank').doc('_index').get();
+      const labels = (idxDoc.exists && Array.isArray(idxDoc.data().groups)) ? idxDoc.data().groups : [];
+      for(const l of labels){ try{ await db.collection('bank').doc(groupDocId(l)).delete(); }catch(e){} }
+      await db.collection('bank').doc('_index').delete();
+    }
     localStorage.removeItem(STORAGE_KEY);
-    BANK=[];
-    populateTopics(); updateStatus();
-    document.getElementById('card-active').style.display='none';
-    setSyncBar('ok','Bank cleared.');
+    GROUPS={}; BANK=[];
+    populateGroupDropdowns(); updateStatus();
+    document.getElementById('card-groups').style.display='none';
+    setSyncBar('ok','All groups cleared.');
   }catch(e){ setSyncBar('err','Clear failed: '+e.message); }
 }
-
 function setSyncBar(type,msg){
   const el=document.getElementById('sync-bar');
   if(type==='sync') el.innerHTML=`<div class="sync-bar sb-sync"><div class="spin"></div><span>${msg}</span></div>`;
@@ -552,25 +731,7 @@ function setSyncBar(type,msg){
   else if(type==='ok') el.innerHTML=`<div class="sync-bar sb-ok"><span>✓</span><span>${msg}</span></div>`;
   else el.innerHTML='';
 }
-
-function showActiveCard(d){
-  const qs=d.questions||BANK;
-  const topics=d.topics||[...new Set(qs.map(q=>q.category))].sort();
-  const uploads=Array.isArray(d.uploads)?d.uploads:[];
-  const storageLabel = db ? '🔥 Firebase (all devices)' : '💾 Local only';
-  document.getElementById('card-active').style.display='block';
-  document.getElementById('active-info').innerHTML=
-    `<strong style="color:#111827">${qs.length} questions</strong> · ${topics.length} topics `+
-    `<span style="font-size:11px;color:#9CA3AF;margin-left:6px">${storageLabel}</span><br>`+
-    topics.map(t=>`<span class="chip" style="display:inline-block;margin:3px 3px 0 0">${t} (${qs.filter(q=>q.category===t).length})</span>`).join('')+
-    (uploads.length>0
-      ? `<div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(17,24,39,.1)">`+
-        `<div style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#374151;margin-bottom:6px">Upload History</div>`+
-        uploads.slice().reverse().slice(0,5).map(u=>`<div style="font-size:11px;color:#374151;margin-bottom:3px">📤 ${u.ts||u.file||'Upload'} · ${u.total} total</div>`).join('')+
-        `</div>`
-      : '')+
-    `<button class="btn" onclick="clearBank()" style="margin-top:12px;background:#FEE2E2;border:1px solid rgba(208,0,0,.2);color:#D00000;font-size:11px;padding:5px 12px;border-radius:7px">🗑 Clear Entire Bank</button>`;
-}
+function showActiveCard(d){ renderAdminGroups(); }
 
 // ══ UNIVERSAL PARSER ═══════════════════════════════════════
 // Standard format:
@@ -679,13 +840,13 @@ function handleFile(file){
             's-err'
           ); return;
         }
-        BANK=qs;
-        const topics=[...new Set(BANK.map(q=>q.category))].sort();
-        setParseStatus(`✓ Parsed ${BANK.length} question${BANK.length>1?'s':''} across ${topics.length} topic${topics.length>1?'s':''} — click Publish to go live.`,'s-ok');
-        document.getElementById('topic-chips').innerHTML=topics.map(t=>`<span class="chip">${t} (${BANK.filter(q=>q.category===t).length})</span>`).join('');
+        PENDING_QUESTIONS=qs;
+        const topics=[...new Set(qs.map(q=>q.category))].sort();
+        setParseStatus(`✓ Parsed ${qs.length} question${qs.length>1?'s':''} across ${topics.length} topic${topics.length>1?'s':''} — enter a group label and click Publish.`,'s-ok');
+        document.getElementById('topic-chips').innerHTML=topics.map(t=>`<span class="chip">${t} (${qs.filter(q=>q.category===t).length})</span>`).join('');
         const pb=document.getElementById('btn-publish');
-        pb.style.display='flex'; pb.disabled=false; pb.textContent='☁ Publish to All Devices';
-        setSyncBar('ok',`File ready: ${BANK.length} questions parsed`);
+        pb.style.display='flex'; pb.disabled=false; pb.textContent='☁ Publish Group to All Devices';
+        setSyncBar('ok',`File ready: ${qs.length} questions parsed — enter group label above`);
       })
       .catch(err=>setParseStatus('Could not read file: '+err.message,'s-err'));
   };
@@ -797,13 +958,12 @@ function startQuiz(){
   if(!level){showErr(errEl,'Please select your level.');return;}
   if(!BANK.length){showErr(errEl,'No question bank loaded yet. Please check back later.');return;}
 
-  let pool=topic==='all'?[...BANK]:BANK.filter(q=>q.category===topic);
-  if(!pool.length){showErr(errEl,'No questions for that topic. Try All Topics.');return;}
-
-  // The question POOL is determined solely by topic (level never filters the bank),
-  // so the no-repeat deck is keyed by topic only — switching "level" must NOT appear
-  // to reset or duplicate progress through the same pool.
-  const contextKey = 'deck|' + topic;
+  const group=document.getElementById('reg-group')?document.getElementById('reg-group').value:'all';
+  let pool=BANK;
+  if(group!=='all') pool=pool.filter(q=>q.group===group);
+  if(topic!=='all') pool=pool.filter(q=>q.category===topic);
+  if(!pool.length){showErr(errEl,'No questions for that selection. Try All Topics.');return;}
+  const contextKey = 'deck|' + group + '|' + topic;
   const desired = countVal==='all' ? pool.length : Math.min(parseInt(countVal), pool.length);
 
   // STRICT no-repeat draw: pulls from a persistent, per-device shuffled deck of this
@@ -819,13 +979,35 @@ function startQuiz(){
 }
 function showErr(el,msg){el.textContent=msg;el.style.display='block';}
 
-function populateTopics(){
-  const sel=document.getElementById('reg-topic');
-  sel.innerHTML='<option value="all">All Topics (Mixed)</option>';
-  [...new Set(BANK.map(q=>q.category))].sort().forEach(t=>{
+function populateGroupDropdowns(){
+  // Populate group selector on reg screen
+  const gSel=document.getElementById('reg-group');
+  if(!gSel) return;
+  const labels=Object.keys(GROUPS).sort();
+  gSel.innerHTML='<option value="all">All Groups (Mixed)</option>';
+  labels.forEach(l=>{
+    const o=document.createElement('option');
+    o.value=l; o.textContent=l+' ('+((GROUPS[l]&&GROUPS[l].questionCount)||0)+' Q)';
+    gSel.appendChild(o);
+  });
+  // Reset topic to match current group
+  onGroupChange();
+}
+
+function populateTopics(){ populateGroupDropdowns(); }
+
+function onGroupChange(){
+  const gSel=document.getElementById('reg-group');
+  const tSel=document.getElementById('reg-topic');
+  if(!gSel||!tSel) return;
+  const group=gSel.value;
+  const pool=group==='all'?BANK:BANK.filter(q=>q.group===group);
+  const topics=[...new Set(pool.map(q=>q.category))].sort();
+  tSel.innerHTML='<option value="all">All Topics (Mixed)</option>';
+  topics.forEach(t=>{
     const o=document.createElement('option');
     o.value=t; o.textContent=t;
-    sel.appendChild(o);
+    tSel.appendChild(o);
   });
 }
 function topicCount(){return new Set(BANK.map(q=>q.category)).size;}
@@ -833,11 +1015,12 @@ function updateStatus(){
   const dot=document.getElementById('hdr-dot');
   const txt=document.getElementById('hdr-txt');
   const badge=document.getElementById('reg-badge');
+  const nGroups=Object.keys(GROUPS).length;
   if(BANK.length>0){
     dot.className='status-dot live';
     txt.textContent='Ready';
     badge.className='reg-badge rb-ok';
-    badge.textContent='✓ Questions available';
+    badge.textContent=`✓ ${nGroups} group${nGroups!==1?'s':''} available`;
   } else {
     dot.className='status-dot';
     txt.textContent='Loading…';
